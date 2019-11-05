@@ -19,19 +19,19 @@ def twoTrainSeg(args, root=Path.db_root_dir('cityscapes')):
     indices_2 = permuted_indices_ls[int(0.5 * number_images):]
     if len(indices_1) % 2 != 0 or len(indices_2) % 2 != 0:
         raise Exception('indices lists need to be even numbers for batch norm')
-    return CityscapesSegmentation(args, split='train', indices_for_split=indices_1), CityscapesSegmentation(args, split='train', indices_for_split=indices_2)
+    return CityscapesSegmentation(args, split='train', indices_for_split=indices_1, search=True), CityscapesSegmentation(args, split='train', indices_for_split=indices_2, search=True)
 
 
 class CityscapesSegmentation(data.Dataset):
     NUM_CLASSES = 19
 
-    def __init__(self, args, root=Path.db_root_dir('cityscapes'), split="train",indices_for_split=None):
+    def __init__(self, args, root=Path.db_root_dir('cityscapes'), split="train",indices_for_split=None, search=False):
 
         self.root = root
         self.split = split
         self.args = args
         self.files = {}
-
+        self.search = search
         self.images_base = os.path.join(self.root, 'leftImg8bit', self.split)
         self.annotations_base = os.path.join(self.root, 'gtFine', self.split)
 
@@ -97,27 +97,43 @@ class CityscapesSegmentation(data.Dataset):
                 for filename in filenames if filename.endswith(suffix)]
 
     def transform_tr(self, sample):
-        composed_transforms = transforms.Compose([
-#            tr.FixedResize(resize=self.args.resize),
- #           tr.RandomCrop(crop_size=self.args.crop_size),
+        if self.search:
+            composed_transforms = transforms.Compose([
+                tr.FixedResize_Search(resize=self.args.crop_size),
+                tr.RandomCrop(crop_size=self.args.crop_size),
             #tr.RandomCrop(crop_size=self.args.crop_size),
-            tr.RandomHorizontalFlip(),
-            tr.RandomScaleCrop(base_size=self.args.resize, crop_size=self.args.crop_size, fill=255),
-            tr.RandomGaussianBlur(),
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            tr.ToTensor()])
+ #           tr.RandomHorizontalFlip(),
+#            tr.RandomScaleCrop(base_size=self.args.resize, crop_size=self.args.crop_size, fill=255),
+#            tr.RandomGaussianBlur(),
+                tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                tr.ToTensor()])
+        else:
+            composed_transforms = transforms.Compose([
+                tr.RandomHorizontalFlip(),
+                tr.RandomScaleCrop(base_size=self.args.resize, crop_size=self.args.crop_size, fill=255),
+                tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                tr.ToTensor()])
 
         return composed_transforms(sample)
 
     def transform_val(self, sample):
-
-        composed_transforms = transforms.Compose([
+        if self.search:
+            composed_transforms = transforms.Compose([
+              tr.FixedResize_Search(resize=self.args.resize),
+#              tr.RandomCrop(crop_size=self.args.crop_size),
+              tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+              tr.ToTensor()])
+       
+        else:
+            composed_transforms = transforms.Compose([
+#             tr.ToTensor(), 
+             tr.FixedResize(resize=(1025,2049))])
  #           tr.FixedResize(resize=self.args.resize),
 #            tr.RandomCrop(crop_size=self.args.crop_size),
-            #tr.FixedResize(resize=self.args.resize),
+#            tr.FixedResize(resize=(1025, 2049)),
             #tr.FixScaleCrop(crop_size=self.args.crop_size), #TODO:CHECK THIS
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            tr.ToTensor()])
+#              tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#              tr.ToTensor()])
 
         return composed_transforms(sample)
 

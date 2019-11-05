@@ -1,7 +1,7 @@
 import torch
 import random
 import numpy as np
-
+import torchvision.transforms as transforms
 from PIL import Image, ImageOps, ImageFilter
 
 class Normalize(object):
@@ -152,23 +152,47 @@ class FixScaleCrop(object):
 class FixedResize(object):
     """change the short edge length to size"""
     def __init__(self, resize=512):
-        self.size1 = resize  # size= 512
+        self.resize = resize  # size= 512
     def __call__(self, sample):
         img = sample['image']
         mask = sample['label']
+#        print(img.size)
+
+ #       print(mask.size)
         assert img.size == mask.size
 
         w, h = img.size
-        if w > h:
-            oh = self.size1
-            ow = int(1.0 * w * oh / h)
-        else:
-            ow = self.size1
-            oh = int(1.0 * h * ow / w)
-        ow=1025
-        oh=2049        
-        img = img.resize((ow,oh), Image.BILINEAR)
-        mask = mask.resize((ow,oh), Image.NEAREST)
+        #print(img.type())
+        #print(w)
+        #print(h)
+        #return
+        #if w > h:
+        #    oh = self.size1
+        #    ow = int(1.0 * w * oh / h)
+        #else:
+        #    ow = self.size1
+        #    oh = int(1.0 * h * ow / w)
+        #ow=1025
+        #oh=2049
+        pad_tb = max(0, self.resize[0] - h)
+        pad_lr = max(0, self.resize[1] - w)  
+        data_transforms = transforms.Compose([
+          transforms.ToTensor(),
+          transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+          ])
+        img = data_transforms(img)
+        mask = torch.LongTensor(np.array(mask).astype(np.int64)) 
+
+        img = torch.nn.ZeroPad2d((0, pad_lr, 0, pad_tb))(img)
+        mask = torch.nn.ConstantPad2d((0, pad_lr, 0, pad_tb), 255)(mask)      
+        
+        h, w = img.shape[1], img.shape[2]
+        i = random.randint(0, h - self.resize[0])
+        j = random.randint(0, w - self.resize[1])
+        img = img[:, i:i + self.resize[0], j:j + self.resize[1]]
+        mask = mask[i:i + self.resize[0], j:j + self.resize[1]]
+        #img = img.resize((ow,oh), Image.BILINEAR)
+        #mask = mask.resize((ow,oh), Image.NEAREST)
         return {'image': img,
                 'label': mask}
 
@@ -187,3 +211,27 @@ class RandomCrop(object):
         mask = mask.crop((x1, y1, x1 + self.crop_size, y1 + self.crop_size))
         return {'image': img,
                 'label': mask}
+
+class FixedResize_Search(object):
+    """change the short edge length to size"""
+
+    def __init__(self, resize=512):
+        self.size1 = resize  # size= 512
+
+    def __call__(self, sample):
+        img = sample['image']
+        mask = sample['label']
+        assert img.size == mask.size
+
+        w, h = img.size
+        if w > h:
+            oh = self.size1
+            ow = int(1.0 * w * oh / h)
+        else:
+            ow = self.size1
+            oh = int(1.0 * h * ow / w)
+        img = img.resize((ow, oh), Image.BILINEAR)
+        mask = mask.resize((ow, oh), Image.NEAREST)
+        return {'image': img,
+                'label': mask}
+
