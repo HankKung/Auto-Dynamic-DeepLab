@@ -46,7 +46,7 @@ class LR_Scheduler(object):
         if self.mode == 'cos':
             lr = 0.5 * self.lr * (1 + math.cos(1.0 * T / self.N * math.pi))
         elif self.mode == 'poly':
-            lr = self.lr * pow((1 - 1.0 * T / self.N), 3)
+            lr = self.lr * pow((1 - 1.0 * T / self.N), 0.9)
         elif self.mode == 'step':
             lr = self.lr * (0.1 ** (epoch // self.lr_step))
         else:
