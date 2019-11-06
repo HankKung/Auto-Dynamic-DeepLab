@@ -34,6 +34,11 @@ class AutoDeeplab (nn.Module) :
             nn.ReLU ()
         )
         self.stem1 = nn.Sequential(
+            nn.Conv2d(half_f_initial* self._block_multiplier_d, half_f_initial* self._block_multiplier_d, 3, stride=1, padding=1),
+            nn.BatchNorm2d(half_f_initial* self._block_multiplier_d),
+            nn.ReLU ()
+        )
+        self.stem2 = nn.Sequential(
             nn.Conv2d(half_f_initial* self._block_multiplier_d, f_initial* self._block_multiplier_d, 3, stride=2, padding=1),
             nn.BatchNorm2d(f_initial* self._block_multiplier_d),
             nn.ReLU ()
@@ -139,21 +144,25 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell4]
 
             elif i == distributed_layer:
-                cell1 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier,
-                              None, self._filter_multiplier, self._filter_multiplier * 2,
-                              self._filter_multiplier)
+                cell1 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier,
+                                None, self._filter_multiplier, self._filter_multiplier * 2,
+                                self._filter_multiplier, block_multiplier_d=self._block_multiplier_d
+                                , dist_prev_prev=True)
 
-                cell2 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 2,
+                cell2 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 2,
                               self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2)
+                              self._filter_multiplier * 2, block_multiplier_d=self._block_multiplier_d
+                                , dist_prev_prev=True)
 
-                cell3 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4)
+                cell3 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 4,
+                                self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
+                                self._filter_multiplier * 4, block_multiplier_d=self._block_multiplier_d
+                                , dist_prev_prev=True)
 
-                cell4 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4, self._filter_multiplier * 8, None,
-                              self._filter_multiplier * 8)
+                cell4 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 8,
+                                self._filter_multiplier * 4, self._filter_multiplier * 8, None,
+                                self._filter_multiplier * 8, block_multiplier_d=self._block_multiplier_d
+                                , dist_prev_prev=True)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -162,42 +171,20 @@ class AutoDeeplab (nn.Module) :
 
             elif i == distributed_layer+1:
                 cell1 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier,
-                              None, self._filter_multiplier, self._filter_multiplier * 2,
-                              self._filter_multiplier, block_multiplier_d=self._block_multiplier_d, dist_prev_prev=True)
-
-                cell2 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 2,
-                              self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2, block_multiplier_d=self._block_multiplier_d, dist_prev_prev=True)
-
-                cell3 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4, block_multiplier_d=self._block_multiplier_d, dist_prev_prev=True)
-
-                cell4 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4, self._filter_multiplier * 8, None,
-                              self._filter_multiplier * 8, block_multiplier_d=self._block_multiplier_d, dist_prev_prev=True)
-
-                self.cells += [cell1]
-                self.cells += [cell2]
-                self.cells += [cell3]
-                self.cells += [cell4]
-
-            elif i == distributed_layer+2:
-                cell1 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier,
-                              None, self._filter_multiplier, self._filter_multiplier * 2,
-                              self._filter_multiplier, dist_prev_prev=True)
+                                None, self._filter_multiplier, self._filter_multiplier * 2,
+                                self._filter_multiplier, dist_prev_prev=True)
 
                 cell2 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 2,
                               self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
                               self._filter_multiplier * 2, dist_prev_prev=True)
 
                 cell3 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4, dist_prev_prev=True)
+                                self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
+                                self._filter_multiplier * 4, dist_prev_prev=True)
 
                 cell4 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4, self._filter_multiplier * 8, None,
-                              self._filter_multiplier * 8, dist_prev_prev=True)
+                                self._filter_multiplier * 4, self._filter_multiplier * 8, None,
+                                self._filter_multiplier * 8, dist_prev_prev=True)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -262,7 +249,8 @@ class AutoDeeplab (nn.Module) :
         self.level_16 = []
         self.level_32 = []
         temp = self.stem0 (x)
-        self.level_4.append (self.stem1 (temp))
+        temp = self.stem1 (temp)
+        self.level_4.append (self.stem2 (temp))
 
         count = 0
 
@@ -479,36 +467,40 @@ class AutoDeeplab (nn.Module) :
                 self.level_32.append (level32_new)
 
             elif layer == self.distributed_layer:
+                device_4_new = self.aspp_device_4(self.level_4[-1])
                 level4_new_1, level4_new_2 = self.cells[count] (self.level_4[-2],
                                                                 None,
                                                                 self.level_4[-1],
                                                                 self.level_8[-1],
-                                                                normalized_alphas_d)
+                                                                normalized_alphas_c)
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
                 
+                device_8_new = self.aspp_device_8(self.level_8[-1])
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
                                                                               self.level_4[-1],
                                                                               self.level_8[-1],
                                                                               self.level_16[-1],
-                                                                              normalized_alphas_d)
+                                                                              normalized_alphas_c)
                 count += 1
 
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
+                device_16_new = self.aspp_device_16(self.level_16[-1])
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (self.level_16[-2],
                                                                                  self.level_8[-1],
                                                                                  self.level_16[-1],
                                                                                  self.level_32[-1],
-                                                                                 normalized_alphas_d)
+                                                                                 normalized_alphas_c)
                 count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
-                
+
+                device_32_new = self.aspp_device_32(self.level_32[-1])
                 level32_new_1, level32_new_2 = self.cells[count] (self.level_32[-2],
                                                                   self.level_16[-1],
                                                                   self.level_32[-1],
                                                                   None,
-                                                                  normalized_alphas_d)
+                                                                  normalized_alphas_c)
                 count += 1
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
 
@@ -517,10 +509,6 @@ class AutoDeeplab (nn.Module) :
                 self.level_8.append (level8_new)
                 self.level_16.append (level16_new)
                 self.level_32.append (level32_new)
-                device_4_new = self.aspp_device_4(self.level_4[-1])
-                device_8_new = self.aspp_device_8(self.level_8[-1])
-                device_16_new = self.aspp_device_16(self.level_16[-1])
-                device_32_new = self.aspp_device_32(self.level_32[-1])
 
             else :
                 level4_new_1, level4_new_2 = self.cells[count] (self.level_4[-2],

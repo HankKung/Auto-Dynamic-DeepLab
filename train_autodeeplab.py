@@ -435,7 +435,7 @@ def main():
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
-        if epoch >25 and not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
+        if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
 
     trainer.writer.close()
