@@ -16,12 +16,7 @@ from utils.metrics import Evaluator
 from new_model import *
 from torchviz import make_dot, make_dot_from_trace
 
-import apex
-try:
-    from apex import amp
-    APEX_AVAILABLE = True
-except ModuleNotFoundError:
-    APEX_AVAILABLE = False
+APEX_AVAILABLE = False
 
 torch.backends.cudnn.benchmark = True
 
@@ -35,7 +30,7 @@ class trainNew(object):
         # Define Tensorboard Summary
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
-        self.use_amp = True if (APEX_AVAILABLE and args.use_amp) else False
+        self.use_amp = False
         self.opt_level = args.opt_level
 
         # Define Dataloader
@@ -84,16 +79,10 @@ class trainNew(object):
                          device_num_layers=6,
                          block_multiplier_d=block_multiplier_d,
                          step_d=step_d)
-#                        output_stride=args.out_stride,
-#                        sync_bn=args.sync_bn,
-#                        freeze_bn=args.freeze_bn)
-        #self.decoder = Decoder(self.nclass, 'autodeeplab', args, False)
-        # TODO: look into these
-        # TODO: ALSO look into different param groups as done int deeplab below
+
         train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
                         {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
-#
-    #    train_params = [{'params': model.parameters(), 'lr': args.lr}]
+
         # Define Optimizer
         optimizer = torch.optim.SGD(train_params, momentum=args.momentum,
                                     weight_decay=args.weight_decay, nesterov=args.nesterov)
@@ -111,7 +100,7 @@ class trainNew(object):
             weight = None
         self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
         self.model, self.optimizer = model, optimizer
-#        self.model=self.model.half()
+
         # Define Evaluator
         self.evaluator_device = Evaluator(self.nclass)
         self.evaluator_cloud = Evaluator(self.nclass)
@@ -122,37 +111,7 @@ class trainNew(object):
         # Using cuda
         if args.cuda:
             self.model = self.model.cuda()
-        if self.use_amp and args.cuda:
-            keep_batchnorm_fp32 = True if (self.opt_level == 'O2' or self.opt_level == 'O3') else None
-
-            # fix for current pytorch version with opt_level 'O1'
-            if self.opt_level == 'O1' and torch.__version__ < '1.3':
-                for module in self.model.modules():
-                    if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
-                        # Hack to fix BN fprop without affine transformation
-                        if module.weight is None:
-                            module.weight = torch.nn.Parameter(
-                                torch.ones(module.running_var.shape, dtype=module.running_var.dtype,
-                                           device=module.running_var.device), requires_grad=False)
-                        if module.bias is None:
-                            module.bias = torch.nn.Parameter(
-                                torch.zeros(module.running_var.shape, dtype=module.running_var.dtype,
-                                            device=module.running_var.device), requires_grad=False)
-
-            # print(keep_batchnorm_fp32)
-            self.model, self.optimizer = amp.initialize(
-                self.model, self.optimizer, opt_level=self.opt_level,
-                keep_batchnorm_fp32=keep_batchnorm_fp32, loss_scale="dynamic")
-
             print('cuda finished')
-
-        # Using data parallel
-        if args.cuda and len(self.args.gpu_ids) >1:
-            if self.opt_level == 'O2' or self.opt_level == 'O3':
-                print('currently cannot run with nn.DataParallel and optimization level', self.opt_level)
-            self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
-            patch_replication_callback(self.model)
-            print('training on multiple-GPUs')
 
         # Resuming checkpoint
         self.best_pred = 0.0
@@ -195,14 +154,12 @@ class trainNew(object):
         num_img_tr = len(self.train_loader)
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
- #           image = image.half()
-#            target = image.half()
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
+
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             device_output, cloud_output = self.model(image)
-            
             device_loss = self.criterion(device_output, target)
             cloud_loss = self.criterion(cloud_output, target)
             loss = device_loss + cloud_loss* 1.5
@@ -219,16 +176,12 @@ class trainNew(object):
             if i %50 == 0:
                 self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
 
-            # Show 10 * 3 inference results each epoch
-            if i % 100 == 0:
-                output = (device_output + cloud_output)/2
-                global_step = i + num_img_tr * epoch
-                self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
             del cloud_loss
             del device_loss
             del loss
             del device_output
             del cloud_output
+
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
@@ -254,11 +207,6 @@ class trainNew(object):
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
            
-#            if i==0:
- #               make_dot(self.model(image), params=dict(self.model.named_parameters()))
-  #              with torch.onnx.set_training(self.model, False):
-   #                 trace, _ = torch.jit.get_trace_graph(self.model, args=(image,))
-    #            make_dot_from_trace(trace)
             with torch.no_grad():
                 device_output, cloud_output = self.model(image)
             device_loss = self.criterion(device_output, target)
@@ -268,26 +216,24 @@ class trainNew(object):
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
             pred_d = device_output.data.cpu().numpy()
             pred_c = cloud_output.data.cpu().numpy()
+            target_show = target
             target = target.cpu().numpy()
             pred_d = np.argmax(pred_d, axis=1)
             pred_c = np.argmax(pred_c, axis=1)
             # Add batch sample into evaluator
             self.evaluator_device.add_batch(target, pred_d)
             self.evaluator_cloud.add_batch(target, pred_c)
-#            if i ==0 and epoch==9:
- #               self.writer.add_graph(self.model, image)          
-        # Fast test during the training
-       # Acc = self.evaluator.Pixel_Accuracy()
-       # Acc_class = self.evaluator.Pixel_Accuracy_Class()
+            if i == 0:
+                global_step = epoch
+                self.summary.visualize_image(self.writer, self.args.dataset, image, target_show, cloud_output, global_step)
+
         mIoU_d = self.evaluator_device.Mean_Intersection_over_Union()
         mIoU_c = self.evaluator_cloud.Mean_Intersection_over_Union()
        # FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
         self.writer.add_scalar('val/device/mIoU', mIoU_d, epoch)
         self.writer.add_scalar('val/cloud/mIoU', mIoU_c, epoch)
-       # self.writer.add_scalar('val/Acc', Acc, epoch)
-       # self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
-       # self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
+
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print("device_mIoU:{}, cloud_mIoU: {}".format(mIoU_d, mIoU_c))

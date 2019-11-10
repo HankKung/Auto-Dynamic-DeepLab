@@ -21,8 +21,9 @@ class Cell(nn.Module):
                  filter_multiplier, downup_sample, prev_prev_block=0):
 
         super(Cell, self).__init__()
+        eps=1e-3
+        momentum=3e-4
         self.cell_arch = cell_arch
-
         self.C_in = block_multiplier * filter_multiplier
         self.C_out = filter_multiplier
         self.C_prev = int(block_multiplier * prev_filter_multiplier)
@@ -32,9 +33,9 @@ class Cell(nn.Module):
             self.C_prev_prev = int(block_multiplier * prev_prev_fmultiplier)
         self.downup_sample = downup_sample
         self.pre_preprocess = ReLUConvBN(
-            self.C_prev_prev, self.C_out, 1, 1, 0, affine=True)
+            self.C_prev_prev, self.C_out, 1, 1, 0, eps=eps, momentum=momentum, affine=True)
         self.preprocess = ReLUConvBN(
-            self.C_prev, self.C_out, 1, 1, 0, affine=True)
+            self.C_prev, self.C_out, 1, 1, 0, eps=eps, momentum=momentum, affine=True)
         self._steps = steps
         self.block_multiplier = block_multiplier
         self._ops = nn.ModuleList()
@@ -42,9 +43,10 @@ class Cell(nn.Module):
             self.scale = 0.5
         elif downup_sample == 1:
             self.scale = 2
+
         for x in self.cell_arch:
             primitive = PRIMITIVES[x[1]]
-            op = OPS[primitive](self.C_out, stride=1, affine=True)
+            op = OPS[primitive](self.C_out, stride=1, eps=eps, momentum=momentum, affine=True)
             self._ops.append(op)
 
     def scale_dimension(self, dim, scale):
@@ -299,7 +301,7 @@ class new_cloud_Model (nn.Module):
                             yield p
 
 class ASPP_train(nn.Module):
-    def __init__(self, C, depth, num_classes, conv=nn.Conv2d, norm=nn.BatchNorm2d, eps=1e-3, momentum=0.0003, mult=1):
+    def __init__(self, C, depth, num_classes, conv=nn.Conv2d, norm=nn.BatchNorm2d, eps=1e-5, momentum=0.0003, mult=1):
         super(ASPP_train, self).__init__()
         self._C = C
         self._depth = depth
@@ -318,14 +320,14 @@ class ASPP_train(nn.Module):
                                dilation=int(18*mult), padding=int(18*mult),
                                bias=False)
         self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
-        self.aspp1_bn = norm(depth)
-        self.aspp2_bn = norm(depth)
-        self.aspp3_bn = norm(depth)
-        self.aspp4_bn = norm(depth)
-        self.aspp5_bn = norm(depth)
+        self.aspp1_bn = norm(depth, eps=eps, momentum=momentum)
+        self.aspp2_bn = norm(depth, eps=eps, momentum=momentum)
+        self.aspp3_bn = norm(depth, eps=eps, momentum=momentum)
+        self.aspp4_bn = norm(depth, eps=eps, momentum=momentum)
+        self.aspp5_bn = norm(depth, eps=eps, momentum=momentum)
         self.conv2 = conv(depth * 5, depth, kernel_size=1, stride=1,
                                bias=False)
-        self.bn2 = norm(depth)
+        self.bn2 = norm(depth, eps=eps, momentum=momentum)
         self.conv3 = nn.Conv2d(depth, num_classes, kernel_size=1, stride=1)
 
     def forward(self, x):

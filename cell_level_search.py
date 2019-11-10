@@ -13,10 +13,12 @@ class MixedOp (nn.Module):
     def __init__(self, C, stride):
         super(MixedOp, self).__init__()
         self._ops = nn.ModuleList()
+        eps = 1e-5
+        momentum = 0.1
         for primitive in PRIMITIVES:
-            op = OPS[primitive](C, stride, False)
+            op = OPS[primitive](C, stride, eps, momentum, False)
             if 'pool' in primitive:
-                op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))
+                op = nn.Sequential(op, nn.BatchNorm2d(C, eps=eps, momentum=momentum, affine=False))
             self._ops.append(op)
 
     def forward(self, x, weights):
