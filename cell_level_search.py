@@ -13,12 +13,10 @@ class MixedOp (nn.Module):
     def __init__(self, C, stride):
         super(MixedOp, self).__init__()
         self._ops = nn.ModuleList()
-        eps = 1e-5
-        momentum = 0.1
         for primitive in PRIMITIVES:
-            op = OPS[primitive](C, stride, eps, momentum, False)
+            op = OPS[primitive](C, stride, False)
             if 'pool' in primitive:
-                op = nn.Sequential(op, nn.BatchNorm2d(C, eps=eps, momentum=momentum, affine=False))
+                op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))
             self._ops.append(op)
 
     def forward(self, x, weights):
@@ -42,12 +40,12 @@ class Cell(nn.Module):
         if prev_fmultiplier_down is not None:
             if block_multiplier_d != 0:
                 dist_C_prev_down = int(prev_fmultiplier_down * block_multiplier_d)
-                self.preprocess_down = ReLUConvBN(
-                    dist_C_prev_down, self.C_out, 1, 1, 0, affine=False)
+                self.preprocess_down = FactorizedReduce(
+                    dist_C_prev_down, self.C_out, affine=False)
             else:    
                 self.C_prev_down = int(prev_fmultiplier_down * block_multiplier)
-                self.preprocess_down = ReLUConvBN(
-                    self.C_prev_down, self.C_out, 1, 1, 0, affine=False)
+                self.preprocess_down = FactorizedReduce(
+                    self.C_prev_down, self.C_out, affine=False)
         if prev_fmultiplier_same is not None:
             if block_multiplier_d != 0:
                 dist_C_prev_same = int(prev_fmultiplier_same * block_multiplier_d)
@@ -108,7 +106,6 @@ class Cell(nn.Module):
     def forward(self, s0, s1_down, s1_same, s1_up, n_alphas):
 
         if s1_down is not None:
-            s1_down = self.prev_feature_resize(s1_down, 'down')
             s1_down = self.preprocess_down(s1_down)
             size_h, size_w = s1_down.shape[2], s1_down.shape[3]
         if s1_same is not None:

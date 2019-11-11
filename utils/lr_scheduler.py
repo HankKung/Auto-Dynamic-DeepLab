@@ -44,7 +44,9 @@ class LR_Scheduler(object):
     def __call__(self, optimizer, i, epoch, best_pred):
         T = epoch * self.iters_per_epoch + i
         if self.mode == 'cos':
-            lr = 0.5 * self.lr * (1 + math.cos(1.0 * T / self.N * math.pi))
+            cos = 0.5 * (1 + math.cos(1.0 * T / self.N * math.pi))
+            decay = (1 - self.min_lr) * cos + self.min_lr
+            lr = self.lr * decay
         elif self.mode == 'poly':
             lr = self.lr * pow((1 - 1.0 * T / self.N), 0.9)
         elif self.mode == 'step':
@@ -52,7 +54,7 @@ class LR_Scheduler(object):
         else:
             raise NotImplemented
         # warm up lr schedule
-        if self.min_lr is not None:
+        if self.min_lr is not None and self.mode != 'cos':
             if lr < self.min_lr:
                 lr = self.min_lr
         if self.warmup_iters > 0 and T < self.warmup_iters:
