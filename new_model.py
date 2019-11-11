@@ -18,12 +18,11 @@ class Cell(nn.Module):
     def __init__(self, steps, block_multiplier, prev_prev_fmultiplier,
                  prev_filter_multiplier,
                  cell_arch, network_arch,
-                 filter_multiplier, downup_sample, prev_prev_block=0):
+                 filter_multiplier, downup_sample, pre_downup_sample, prev_prev_block=0):
 
         super(Cell, self).__init__()
-        eps=1e-3
-        momentum=3e-4
         self.cell_arch = cell_arch
+
         self.C_in = block_multiplier * filter_multiplier
         self.C_out = filter_multiplier
         self.C_prev = int(block_multiplier * prev_filter_multiplier)
@@ -32,41 +31,56 @@ class Cell(nn.Module):
         else:
             self.C_prev_prev = int(block_multiplier * prev_prev_fmultiplier)
         self.downup_sample = downup_sample
+        self.pre_downup_sample = pre_downup_sample
         self.pre_preprocess = ReLUConvBN(
-            self.C_prev_prev, self.C_out, 1, 1, 0, eps=eps, momentum=momentum, affine=True)
+            self.C_prev_prev, self.C_out, 1, 1, 0, affine=True)
         self.preprocess = ReLUConvBN(
-            self.C_prev, self.C_out, 1, 1, 0, eps=eps, momentum=momentum, affine=True)
+            self.C_prev, self.C_out, 1, 1, 0, affine=True)
         self._steps = steps
         self.block_multiplier = block_multiplier
         self._ops = nn.ModuleList()
         if downup_sample == -1:
-            self.scale = 0.5
+            self.preprocess = FactorizedReduce(self.C_prev, self.C_out)
         elif downup_sample == 1:
             self.scale = 2
 
+        if pre_downup_sample == -1:
+            self.pre_preprocess = FactorizedReduce(self.C_prev_prev, self.C_out)
+        elif pre_downup_sample == -2:
+            self.pre_preprocess = nn.Sequential(FactorizedReduce(self.C_prev_prev, self.C_out //2 ),
+                                                FactorizedReduce(self.C_out//2, self.C_out))
+        elif pre_downup_sample == 2:
+            self.pre_preprocess = ReLUConvBN(
+            self.C_prev_prev, int(self.C_prev_prev//2), 1, 1, 0, affine=True)
+            self.pre_preprocess_2 = ReLUConvBN(
+            int(self.C_prev_prev//2), self.C_out, 1, 1, 0, affine=True)
+         
         for x in self.cell_arch:
             primitive = PRIMITIVES[x[1]]
-            op = OPS[primitive](self.C_out, stride=1, eps=eps, momentum=momentum, affine=True)
+            op = OPS[primitive](self.C_out, stride=1, affine=True)
             self._ops.append(op)
 
     def scale_dimension(self, dim, scale):
         return int((float(dim) - 1.0) * scale + 1.0)
 
     def forward(self, prev_prev_input, prev_input):
-
-        if self.downup_sample != 0:
+        s1 = prev_input        
+        if self.downup_sample == 1:
             feature_size_h = self.scale_dimension(
-                prev_input.shape[2], self.scale)
+                s1.shape[2], self.scale)
             feature_size_w = self.scale_dimension(
-                prev_input.shape[3], self.scale)
-            prev_input = F.interpolate(
-                prev_input, [feature_size_h, feature_size_w], mode='bilinear')
-
-        prev_prev_input = F.interpolate(prev_prev_input, (prev_input.shape[2], prev_input.shape[3]), mode='bilinear') if (
-            prev_prev_input.shape[2] != prev_input.shape[2]) or (prev_prev_input.shape[3] != prev_input.shape[3]) else prev_prev_input
-        s0 = self.pre_preprocess(prev_prev_input) if (
-            prev_prev_input.shape[1] != self.C_out) else prev_prev_input
-        s1 = self.preprocess(prev_input)
+                s1.shape[3], self.scale)
+            s1 = F.interpolate(
+                s1, [feature_size_h, feature_size_w], mode='bilinear')
+     
+        s1 = self.preprocess(s1)
+        s0 = prev_prev_input
+        s0 = F.interpolate(s0, (self.scale_dimension(s0.shape[2], 2), self.scale_dimension(s0.shape[3], 2)), mode='bilinear') if self.pre_downup_sample > 0 else s0
+        s0 = self.pre_preprocess(s0)
+        if self.pre_downup_sample == 2:
+            s0 = F.interpolate(s0, (self.scale_dimension(s0.shape[2], 2), self.scale_dimension(s0.shape[3], 2)), mode='bilinear')
+            s0 = self.pre_preprocess_2(s0) 
+        
         states = [s0, s1]
 
         offset = 0
@@ -88,7 +102,6 @@ class Cell(nn.Module):
             states.append(s)
 
         concat_feature = torch.cat(states[-self._steps:], dim=1)
-        # return prev_input, self.ReLUConvBN(concat_feature)
         return prev_input, concat_feature
 
 
@@ -136,38 +149,47 @@ class new_device_Model (nn.Module):
 
             if i == 0:
                 downup_sample = int(0 - level)
-                
+                pre_downup_sample = int(-1 - level)
                 _cell = cell(self._step, self._block_multiplier, ini_initial_fm / block_multiplier,
                              initial_fm / block_multiplier,
                              self.cell_arch, self.network_arch[i],
                              self._filter_multiplier *
                              filter_param_dict[level],
-                             downup_sample)
+                             downup_sample,
+                             pre_downup_sample)
             else:
 
                 downup_sample = int(prev_level- level)
+                
                 if i == 1:
+                    pre_downup_sample = int(0 - level)
                     _cell = cell(self._step, self._block_multiplier,
                                  initial_fm / block_multiplier,
                                  self._filter_multiplier * filter_param_dict[prev_level],
                                  self.cell_arch, self.network_arch[i],
                                  self._filter_multiplier *
                                  filter_param_dict[level],
-                                 downup_sample)
+                                 downup_sample,
+                                 pre_downup_sample)
                 else:
                     downup_sample = int(prev_level - level)
+                    pre_downup_sample = int(prev_prev_level - level)
                     _cell = cell(self._step, self._block_multiplier, self._filter_multiplier * filter_param_dict[prev_prev_level],
                                  self._filter_multiplier *
                                  filter_param_dict[prev_level],
                                  self.cell_arch, self.network_arch[i],
                                  self._filter_multiplier *
-                                 filter_param_dict[level], downup_sample)
+                                 filter_param_dict[level],
+                                 downup_sample,
+                                 pre_downup_sample)
        
             self.cells += [_cell]
         if network_arch[-1] == 1:
             mult = 2
         elif network_arch[-1] == 2:
             mult =1
+        elif network_arch[-1] ==3:
+            mult = 0.5
         else:
             return
         self.aspp_device = ASPP_train(filter_multiplier * step * filter_param_dict[self.network_arch[-1]], \
@@ -180,10 +202,9 @@ class new_device_Model (nn.Module):
         stem1 = self.stem2(stem0)
 
         two_last_inputs = (stem0, stem1)
-        for i in range(self._num_layers):
+        for i in range(self._num_layers):       
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
-            
         last_output = two_last_inputs[-1]
         aspp_result = self.aspp_device(last_output)
         return  two_last_inputs, aspp_result
@@ -196,7 +217,6 @@ class new_cloud_Model (nn.Module):
         super(new_cloud_Model, self).__init__()
 
         self.cells = nn.ModuleList()
-       # self.network_arch = torch.from_numpy(network_arch)
         self.network_arch = network_arch[device_num_layers:]
         self.cell_arch_c = torch.from_numpy(cell_arch_c)
         self._num_layers = len(self.network_arch)
@@ -221,16 +241,19 @@ class new_cloud_Model (nn.Module):
             prev_prev_level = self.network_arch[i-2]
 
             if i == 0:
-                downup_sample = device_layer[-1]-self.network_arch[0]
+                downup_sample = int(device_layer[-1]-self.network_arch[0])
+                pre_downup_sample = int(device_layer[-2] - self.network_arch[0])
                 _cell = cell(self._step, self._block_multiplier_d, self._filter_multiplier * filter_param_dict[device_layer[-2]],
                              self._filter_multiplier * filter_param_dict[device_layer[-1]],
                              self.cell_arch_c, self.network_arch[i],
                              self._filter_multiplier *
                              filter_param_dict[level],
-                             downup_sample)
+                             downup_sample,
+                             pre_downup_sample)
             else:
                 downup_sample = int(prev_level - level)
                 if i == 1:
+                    pre_downup_sample = int(device_layer[-1] - self.network_arch[1])
                     _cell = cell(self._step, self._block_multiplier_c,
                                  self._filter_multiplier * filter_param_dict[device_layer[-1]],
                                  self._filter_multiplier * filter_param_dict[self.network_arch[0]],
@@ -238,22 +261,28 @@ class new_cloud_Model (nn.Module):
                                  self._filter_multiplier *
                                  filter_param_dict[level],
                                  downup_sample,
+                                 pre_downup_sample,
                                  prev_prev_block=step_d)
                 else:
                     downup_sample = int(prev_level - level)
+                    pre_downup_sample = int(prev_prev_level - level)
                     _cell = cell(self._step, self._block_multiplier_c, self._filter_multiplier * filter_param_dict[prev_prev_level],
                                  self._filter_multiplier *
                                  filter_param_dict[prev_level],
                                  self.cell_arch_c, self.network_arch[i],
                                  self._filter_multiplier *
-                                 filter_param_dict[level], downup_sample)
-          
+                                 filter_param_dict[level],
+                                 downup_sample,
+                                 pre_downup_sample)
+            print(downup_sample)          
             self.cells += [_cell]
 
         if network_arch[-1] == 1:
             mult = 2
         elif network_arch[-1] == 2:
             mult =1
+        elif network_arch[-1] == 3:
+            mult = 0.5
         else:
             return
 
@@ -301,7 +330,7 @@ class new_cloud_Model (nn.Module):
                             yield p
 
 class ASPP_train(nn.Module):
-    def __init__(self, C, depth, num_classes, conv=nn.Conv2d, norm=nn.BatchNorm2d, eps=1e-5, momentum=0.0003, mult=1):
+    def __init__(self, C, depth, num_classes, conv=nn.Conv2d, norm=nn.BatchNorm2d, eps=1e-3, momentum=0.0003, mult=1):
         super(ASPP_train, self).__init__()
         self._C = C
         self._depth = depth
@@ -320,14 +349,14 @@ class ASPP_train(nn.Module):
                                dilation=int(18*mult), padding=int(18*mult),
                                bias=False)
         self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
-        self.aspp1_bn = norm(depth, eps=eps, momentum=momentum)
-        self.aspp2_bn = norm(depth, eps=eps, momentum=momentum)
-        self.aspp3_bn = norm(depth, eps=eps, momentum=momentum)
-        self.aspp4_bn = norm(depth, eps=eps, momentum=momentum)
-        self.aspp5_bn = norm(depth, eps=eps, momentum=momentum)
+        self.aspp1_bn = norm(depth)
+        self.aspp2_bn = norm(depth)
+        self.aspp3_bn = norm(depth)
+        self.aspp4_bn = norm(depth)
+        self.aspp5_bn = norm(depth)
         self.conv2 = conv(depth * 5, depth, kernel_size=1, stride=1,
                                bias=False)
-        self.bn2 = norm(depth, eps=eps, momentum=momentum)
+        self.bn2 = norm(depth)
         self.conv3 = nn.Conv2d(depth, num_classes, kernel_size=1, stride=1)
 
     def forward(self, x):

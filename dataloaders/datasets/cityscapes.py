@@ -125,6 +125,7 @@ class CityscapesSegmentation(data.Dataset):
         else:
             composed_transforms = transforms.Compose([
              tr.FixedResize(resize=(1025,2049))])
+
         return composed_transforms(sample)
 
     def transform_ts(self, sample):

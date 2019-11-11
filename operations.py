@@ -11,11 +11,10 @@ OPS = {
   'dil_conv_3x3' : lambda C, stride, eps, momentum, affine: DilConv(C, C, 3, stride, 2, 2, eps=eps, momentum=momentum, affine=affine),
   'dil_conv_5x5' : lambda C, stride, eps, momentum, affine: DilConv(C, C, 5, stride, 4, 2, eps=eps, momentum=momentum, affine=affine),
 }
-#eps=1e-3
-#momentum=3e-4
+
 class ReLUConvBN(nn.Module):
 
-  def __init__(self, C_in, C_out, kernel_size, stride, eps, momentum, padding, affine=True):
+  def __init__(self, C_in, C_out, kernel_size, stride, padding, eps=1e-5, momentum=0.1, affine=True):
     super(ReLUConvBN, self).__init__()
     self.op = nn.Sequential(
       nn.ReLU(inplace=False),
@@ -28,7 +27,7 @@ class ReLUConvBN(nn.Module):
 
 class DilConv(nn.Module):
 
-  def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, eps, momentum, affine=True):
+  def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, eps=1e-5, momentum=0.1, affine=True):
     super(DilConv, self).__init__()
     self.op = nn.Sequential(
       nn.ReLU(inplace=False),
@@ -43,7 +42,7 @@ class DilConv(nn.Module):
 
 class SepConv(nn.Module):
 
-  def __init__(self, C_in, C_out, kernel_size, stride, padding, eps, momentum, affine=True):
+  def __init__(self, C_in, C_out, kernel_size, stride, padding, eps=1e-5, momentum=0.1, affine=True):
     super(SepConv, self).__init__()
     self.op = nn.Sequential(
       nn.ReLU(inplace=False),
@@ -83,18 +82,19 @@ class Zero(nn.Module):
 
 
 class FactorizedReduce(nn.Module):
-#TODO: why conv1 and conv2 in two parts ?
-  def __init__(self, C_in, C_out, eps, momentum, affine=True):
+  def __init__(self, C_in, C_out, eps=1e-5, momentum=0.1, affine=True):
     super(FactorizedReduce, self).__init__()
     assert C_out % 2 == 0
     self.relu = nn.ReLU(inplace=False)
     self.conv_1 = nn.Conv2d(C_in, C_out // 2, 1, stride=2, padding=0, bias=False)
     self.conv_2 = nn.Conv2d(C_in, C_out // 2, 1, stride=2, padding=0, bias=False)
     self.bn = nn.BatchNorm2d(C_out, eps=eps, momentum=momentum, affine=affine)
+    self.pad = nn.ConstantPad2d((0, 1, 0, 1), 0)
 
   def forward(self, x):
     x = self.relu(x)
-    out = torch.cat([self.conv_1(x), self.conv_2(x[:,:,1:,1:])], dim=1)
+    y = self.pad(x)
+    out = torch.cat([self.conv_1(x), self.conv_2(y[:,:,1:,1:])], dim=1)
     out = self.bn(out)
     return out
 

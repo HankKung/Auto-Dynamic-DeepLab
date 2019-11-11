@@ -17,7 +17,6 @@ from new_model import *
 from torchviz import make_dot, make_dot_from_trace
 
 APEX_AVAILABLE = False
-
 torch.backends.cudnn.benchmark = True
 
 class trainNew(object):
@@ -47,7 +46,8 @@ class trainNew(object):
         new_network_arch = np.load(network_path_space)
         
         if args.network == 'dist':
-            new_network_arch = [0, 1, 2, 3, 2, 2, 1, 0, 1, 2, 3, 2]
+#            new_network_arch = [0, 1, 2, 3, 2, 2, 1, 0, 1, 2, 3, 2]
+            new_network_arch = [1, 0, 0, 1, 2, 3, 2, 3, 3, 2, 2, 3]
             block_multiplier_d=4
             step_d=4
         elif args.network == 'autodeeplab':
@@ -111,7 +111,6 @@ class trainNew(object):
         # Using cuda
         if args.cuda:
             self.model = self.model.cuda()
-            print('cuda finished')
 
         # Resuming checkpoint
         self.best_pred = 0.0
@@ -156,10 +155,10 @@ class trainNew(object):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
-
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             device_output, cloud_output = self.model(image)
+            
             device_loss = self.criterion(device_output, target)
             cloud_loss = self.criterion(cloud_output, target)
             loss = device_loss + cloud_loss* 1.5
@@ -181,7 +180,6 @@ class trainNew(object):
             del loss
             del device_output
             del cloud_output
-
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
@@ -206,7 +204,7 @@ class trainNew(object):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
-           
+
             with torch.no_grad():
                 device_output, cloud_output = self.model(image)
             device_loss = self.criterion(device_output, target)
@@ -229,7 +227,7 @@ class trainNew(object):
 
         mIoU_d = self.evaluator_device.Mean_Intersection_over_Union()
         mIoU_c = self.evaluator_cloud.Mean_Intersection_over_Union()
-       # FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
+
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
         self.writer.add_scalar('val/device/mIoU', mIoU_d, epoch)
         self.writer.add_scalar('val/cloud/mIoU', mIoU_c, epoch)
