@@ -8,7 +8,7 @@ class SegmentationLosses(object):
         self.size_average = size_average
         self.batch_average = batch_average
         self.cuda = cuda
- #       self.search = search
+        self.search = search
 
     def build_loss(self, mode='ce'):
         """Choices: ['ce' or 'focal']"""
@@ -28,8 +28,8 @@ class SegmentationLosses(object):
 
         loss = criterion(logit, target.long())
 
-#        if self.batch_average and self.search:
- #           loss /= n
+        if self.batch_average and self.search:
+            loss /= n
 
         return loss
 
