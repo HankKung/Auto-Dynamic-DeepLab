@@ -2,6 +2,9 @@
 
 Distributed Auto-DeepLab perform two stage paradigm by firstly searching for the architecture, then deriving the searched architecture. Secondly, train the weights of model from scratch. 
 ## Distributed Neural Architecture Search
+
+**We conduct the architecture on Cityscapes**
+
 ```
 cd scripts
 bash train_cityscapes.sh
