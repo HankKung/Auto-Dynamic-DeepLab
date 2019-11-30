@@ -15,3 +15,7 @@ bash train_cityscapes.sh
 cd scripts
 bash retrain_cityscapes
 ```
+## Requirements
+
+## Citation
+
