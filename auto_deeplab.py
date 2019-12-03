@@ -44,12 +44,12 @@ class AutoDeeplab (nn.Module) :
         for i in range (self._num_layers) :
 
             if i == 0 :
-                cell1 = cell (self._step_d, self._block_multiplier_d, -1,
+                cell1 = cell (self._step_d, self._block_multiplier_d, half_f_initial,
                               None, f_initial, None,
-                              self._filter_multiplier)
-                cell2 = cell (self._step_d, self._block_multiplier_d, -1,
+                              self._filter_multiplier, pre_preprocess_sample_rate=0.5)
+                cell2 = cell (self._step_d, self._block_multiplier_d, half_f_initial,
                               f_initial, None, None,
-                              self._filter_multiplier * 2)
+                              self._filter_multiplier * 2, pre_preprocess_sample_rate=0.25)
                 self.cells += [cell1]
                 self.cells += [cell2]
             elif i == 1 :
@@ -57,13 +57,13 @@ class AutoDeeplab (nn.Module) :
                               None, self._filter_multiplier, self._filter_multiplier * 2,
                               self._filter_multiplier)
 
-                cell2 = cell (self._step_d, self._block_multiplier_d, -1,
+                cell2 = cell (self._step_d, self._block_multiplier_d, f_initial,
                               self._filter_multiplier, self._filter_multiplier * 2, None,
-                              self._filter_multiplier * 2)
+                              self._filter_multiplier * 2, pre_preprocess_sample_rate=0.5)
 
-                cell3 = cell (self._step_d, self._block_multiplier_d, -1,
+                cell3 = cell (self._step_d, self._block_multiplier_d, f_initial,
                               self._filter_multiplier * 2, None, None,
-                              self._filter_multiplier * 4)
+                              self._filter_multiplier * 4, pre_preprocess_sample_rate=0.25)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -78,13 +78,13 @@ class AutoDeeplab (nn.Module) :
                               self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
                               self._filter_multiplier * 2)
 
-                cell3 = cell (self._step_d, self._block_multiplier_d, -1,
+                cell3 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 2,
                               self._filter_multiplier * 2, self._filter_multiplier * 4, None,
-                              self._filter_multiplier * 4)
+                              self._filter_multiplier * 4, pre_preprocess_sample_rate=0.5)
 
-                cell4 = cell (self._step_d, self._block_multiplier_d, -1,
+                cell4 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 2,
                               self._filter_multiplier * 4, None, None,
-                              self._filter_multiplier * 8)
+                              self._filter_multiplier * 8, pre_preprocess_sample_rate=0.25)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -107,9 +107,9 @@ class AutoDeeplab (nn.Module) :
                               self._filter_multiplier * 4)
 
 
-                cell4 = cell (self._step_d, self._block_multiplier_d, -1,
+                cell4 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 4,
                               self._filter_multiplier * 4, self._filter_multiplier * 8, None,
-                              self._filter_multiplier * 8)
+                              self._filter_multiplier * 8, pre_preprocess_sample_rate=0.5)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -317,9 +317,9 @@ class AutoDeeplab (nn.Module) :
         for layer in range (self._num_layers) :
 
             if layer == 0 :
-                level4_new, = self.cells[count] (None, None, self.level_4[-1], None, normalized_alphas_d)
+                level4_new, = self.cells[count] (temp, None, self.level_4[-1], None, normalized_alphas_d)
                 count += 1
-                level8_new, = self.cells[count] (None, self.level_4[-1], None, None, normalized_alphas_d)
+                level8_new, = self.cells[count] (temp, self.level_4[-1], None, None, normalized_alphas_d)
                 count += 1
 
                 level4_new = normalized_betas[layer][0][1] * level4_new
@@ -337,7 +337,7 @@ class AutoDeeplab (nn.Module) :
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
-                level8_new_1, level8_new_2 = self.cells[count] (None,
+                level8_new_1, level8_new_2 = self.cells[count] (self.level_4[-2],
                                                                 self.level_4[-1],
                                                                 self.level_8[-1],
                                                                 None,
@@ -345,7 +345,7 @@ class AutoDeeplab (nn.Module) :
                 count += 1
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2
 
-                level16_new, = self.cells[count] (None,
+                level16_new, = self.cells[count] (self.level_4[-2],
                                                   self.level_8[-1],
                                                   None,
                                                   None,
@@ -375,7 +375,7 @@ class AutoDeeplab (nn.Module) :
                 count += 1
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
-                level16_new_1, level16_new_2 = self.cells[count] (None,
+                level16_new_1, level16_new_2 = self.cells[count] (self.level_8[-2],
                                                                   self.level_8[-1],
                                                                   self.level_16[-1],
                                                                   None,
@@ -384,7 +384,7 @@ class AutoDeeplab (nn.Module) :
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2
 
 
-                level32_new, = self.cells[count] (None,
+                level32_new, = self.cells[count] (self.level_8[-2],
                                                   self.level_16[-1],
                                                   None,
                                                   None,
@@ -423,7 +423,7 @@ class AutoDeeplab (nn.Module) :
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (None,
+                level32_new_1, level32_new_2 = self.cells[count] (self.level_16[-2],
                                                                   self.level_16[-1],
                                                                   self.level_32[-1],
                                                                   None,
