@@ -98,6 +98,24 @@ class FactorizedReduce(nn.Module):
     out = self.bn(out)
     return out
 
+class DoubleFactorizedReduce(nn.Module):
+  def __init__(self, C_in, C_out, ,eps=1e-5, momentum=0.1, affine=True):
+    super(DoubleFactorizedReduce, self).__init__()
+    assert C_out % 2 == 0
+    self.relu = nn.ReLU(inplace=False)
+    self.conv_1 = nn.Conv2d(C_in, C_out // 2, 1, stride=4, padding=0, bias=False)
+    self.conv_2 = nn.Conv2d(C_in, C_out // 2, 1, stride=4, padding=0, bias=False)
+    self.bn = nn.BatchNorm2d(C_out, affine=affine)
+    self.pad = nn.ConstantPad2d((0, 1, 0, 1), 0)
+
+
+  def forward(self, x):
+    x = self.relu(x)
+    y = self.pad(x)
+    out = torch.cat([self.conv_1(x), self.conv_2(y[:, :, 1:, 1:])], dim=1)
+    out = self.bn(out)
+    return out
+
 class ASPP(nn.Module):
     def __init__(self, in_channels, out_channels, paddings, dilations, momentum=0.0003):
 
