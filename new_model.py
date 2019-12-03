@@ -21,8 +21,9 @@ class Cell(nn.Module):
                  filter_multiplier, downup_sample, pre_downup_sample, prev_prev_block=0):
 
         super(Cell, self).__init__()
+        eps = 0.001
+        momentum = 3e-4
         self.cell_arch = cell_arch
-
         self.C_in = block_multiplier * filter_multiplier
         self.C_out = filter_multiplier
         self.C_prev = int(block_multiplier * prev_filter_multiplier)
@@ -33,31 +34,30 @@ class Cell(nn.Module):
         self.downup_sample = downup_sample
         self.pre_downup_sample = pre_downup_sample
         self.pre_preprocess = ReLUConvBN(
-            self.C_prev_prev, self.C_out, 1, 1, 0, affine=True)
+            self.C_prev_prev, self.C_out, 1, 1, 0, eps=eps, momentum=momentum, affine=True)
         self.preprocess = ReLUConvBN(
-            self.C_prev, self.C_out, 1, 1, 0, affine=True)
+            self.C_prev, self.C_out, 1, 1, 0, eps=eps, momentum=momentum, affine=True)
         self._steps = steps
         self.block_multiplier = block_multiplier
         self._ops = nn.ModuleList()
         if downup_sample == -1:
-            self.preprocess = FactorizedReduce(self.C_prev, self.C_out)
+            self.preprocess = FactorizedReduce(self.C_prev, self.C_out, eps=eps, momentum=momentum)
         elif downup_sample == 1:
             self.scale = 2
 
         if pre_downup_sample == -1:
-            self.pre_preprocess = FactorizedReduce(self.C_prev_prev, self.C_out)
+            self.pre_preprocess = FactorizedReduce(self.C_prev_prev, self.C_out, eps=eps, momentum=momentum)
         elif pre_downup_sample == -2:
-            self.pre_preprocess = nn.Sequential(FactorizedReduce(self.C_prev_prev, self.C_out //2 ),
-                                                FactorizedReduce(self.C_out//2, self.C_out))
+            self.pre_preprocess = DoubleFactorizedReduce(self.C_prev_prev,, self.C_out, eps=eps, momentum=momentum)
+        elif pre_downup_sample == 1:
+            self.pre_pre_scale = 2
         elif pre_downup_sample == 2:
-            self.pre_preprocess = ReLUConvBN(
-            self.C_prev_prev, int(self.C_prev_prev//2), 1, 1, 0, affine=True)
-            self.pre_preprocess_2 = ReLUConvBN(
-            int(self.C_prev_prev//2), self.C_out, 1, 1, 0, affine=True)
+            self.pre_pre_scale = 4
+
          
         for x in self.cell_arch:
             primitive = PRIMITIVES[x[1]]
-            op = OPS[primitive](self.C_out, stride=1, affine=True)
+            op = OPS[primitive](self.C_out, stride=1, eps=eps, momentum=momentum, affine=True)
             self._ops.append(op)
 
     def scale_dimension(self, dim, scale):
@@ -75,11 +75,12 @@ class Cell(nn.Module):
      
         s1 = self.preprocess(s1)
         s0 = prev_prev_input
-        s0 = F.interpolate(s0, (self.scale_dimension(s0.shape[2], 2), self.scale_dimension(s0.shape[3], 2)), mode='bilinear') if self.pre_downup_sample > 0 else s0
+        s0 = F.interpolate(s0, \
+            (self.scale_dimension(s0.shape[2], self.pre_pre_scale), \
+            self.scale_dimension(s0.shape[3], self.pre_pre_scale)), \
+            mode='bilinear') if self.pre_downup_sample > 0 else s0
+
         s0 = self.pre_preprocess(s0)
-        if self.pre_downup_sample == 2:
-            s0 = F.interpolate(s0, (self.scale_dimension(s0.shape[2], 2), self.scale_dimension(s0.shape[3], 2)), mode='bilinear')
-            s0 = self.pre_preprocess_2(s0) 
         
         states = [s0, s1]
 
@@ -205,6 +206,7 @@ class new_device_Model (nn.Module):
         for i in range(self._num_layers):       
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
+   
         last_output = two_last_inputs[-1]
         aspp_result = self.aspp_device(last_output)
         return  two_last_inputs, aspp_result
