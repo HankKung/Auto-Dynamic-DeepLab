@@ -58,7 +58,7 @@ class Trainer(object):
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
-        self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
+        self.criterion = SegmentationLosses(weight=weight, search=True, cuda=args.cuda).build_loss(mode=args.loss_type)
 
         # Define network
         model = AutoDeeplab (num_classes=self.nclass, num_layers=12, criterion=self.criterion, filter_multiplier=self.args.filter_multiplier,
@@ -114,8 +114,6 @@ class Trainer(object):
             print('cuda finished')
 
 
-
-        # Resuming checkpoint
         self.best_pred = 0.0
         if args.resume is not None:
             if not os.path.isfile(args.resume):
@@ -201,9 +199,9 @@ class Trainer(object):
             #self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
 
             # Show 10 * 3 inference results each epoch
-            if i % (num_img_tr // 10) == 0:
-                global_step = i + num_img_tr * epoch
-                self.summary.visualize_image(self.writer, self.args.dataset, image, target, cloud_output, global_step)
+            #if i % (num_img_tr // 10) == 0:
+             #   global_step = i + num_img_tr * epoch
+              #  self.summary.visualize_image(self.writer, self.args.dataset, image, target, cloud_output, global_step)
 
             #torch.cuda.empty_cache()
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
@@ -253,14 +251,18 @@ class Trainer(object):
             self.evaluator.add_batch(target, device_pred)
             self.evaluator_cloud.add_batch(target, cloud_pred)
 
-
+        # Fast test during the training
+        # Acc = self.evaluator.Pixel_Accuracy()
+        # Acc_class = self.evaluator.Pixel_Accuracy_Class()
         mIoU = self.evaluator.Mean_Intersection_over_Union()
         mIoU_cloud = self.evaluator_cloud.Mean_Intersection_over_Union()
         # FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
         self.writer.add_scalar('val/device/mIoU', mIoU, epoch)
         self.writer.add_scalar('val/cloud/mIoU', mIoU_cloud, epoch)
-
+        # self.writer.add_scalar('val/Acc', Acc, epoch)
+        # self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
+        # self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         # print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
@@ -404,7 +406,7 @@ def main():
         args.batch_size = 4 * len(args.gpu_ids)
 
     if args.test_batch_size is None:
-        args.test_batch_size = args.batch_size
+        args.test_batch_size = 1
 
     #args.lr = args.lr / (4 * len(args.gpu_ids)) * args.batch_size
 
@@ -418,7 +420,7 @@ def main():
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
-        if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
+        if epoch>54 and not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
 
     trainer.writer.close()
