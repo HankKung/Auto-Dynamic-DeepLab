@@ -31,7 +31,7 @@ class DilConv(nn.Module):
     super(DilConv, self).__init__()
     self.op = nn.Sequential(
       nn.ReLU(inplace=False),
-      nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False),
+      nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=C_in, bias=False),
       nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False),
       nn.BatchNorm2d(C_out, eps=eps, momentum=momentum, affine=affine)
       )
@@ -106,13 +106,13 @@ class DoubleFactorizedReduce(nn.Module):
     self.conv_1 = nn.Conv2d(C_in, C_out // 2, 1, stride=4, padding=0, bias=False)
     self.conv_2 = nn.Conv2d(C_in, C_out // 2, 1, stride=4, padding=0, bias=False)
     self.bn = nn.BatchNorm2d(C_out, affine=affine)
-    self.pad = nn.ConstantPad2d((0, 1, 0, 1), 0)
+    self.pad = nn.ConstantPad2d((0, 2, 0, 2), 0)
 
 
   def forward(self, x):
     x = self.relu(x)
     y = self.pad(x)
-    out = torch.cat([self.conv_1(x), self.conv_2(y[:, :, 1:, 1:])], dim=1)
+    out = torch.cat([self.conv_1(x), self.conv_2(y[:, :, 2:, 2:])], dim=1)
     out = self.bn(out)
     return out
 
