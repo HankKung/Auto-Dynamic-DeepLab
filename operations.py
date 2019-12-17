@@ -2,24 +2,24 @@ import torch
 import torch.nn as nn
 
 OPS = {
-  'none' : lambda C, stride, eps, momentum, affine: Zero(stride),
-  'avg_pool_3x3' : lambda C, stride, eps, momentum, affine: nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False),
-  'max_pool_3x3' : lambda C, stride, eps, momentum, affine: nn.MaxPool2d(3, stride=stride, padding=1),
-  'skip_connect' : lambda C, stride, eps, momentum, affine: Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
-  'sep_conv_3x3' : lambda C, stride, eps, momentum, affine: SepConv(C, C, 3, stride, 1, eps=eps, momentum=momentum, affine=affine),
-  'sep_conv_5x5' : lambda C, stride, eps, momentum, affine: SepConv(C, C, 5, stride, 2, eps=eps, momentum=momentum, affine=affine),
-  'dil_conv_3x3' : lambda C, stride, eps, momentum, affine: DilConv(C, C, 3, stride, 2, 2, eps=eps, momentum=momentum, affine=affine),
-  'dil_conv_5x5' : lambda C, stride, eps, momentum, affine: DilConv(C, C, 5, stride, 4, 2, eps=eps, momentum=momentum, affine=affine),
+  'none' : lambda C, stride, BatchNorm, eps, momentum, affine: Zero(stride),
+  'avg_pool_3x3' : lambda C, stride, BatchNorm, eps, momentum, affine: nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False),
+  'max_pool_3x3' : lambda C, stride, BatchNorm, eps, momentum, affine: nn.MaxPool2d(3, stride=stride, padding=1),
+  'skip_connect' : lambda C, stride, BatchNorm, eps, momentum, affine: Identity() if stride == 1 else FactorizedReduce(C, C, BatchNorm, affine=affine),
+  'sep_conv_3x3' : lambda C, stride, BatchNorm, eps, momentum, affine: SepConv(C, C, 3, stride, 1, BatchNorm, eps=eps, momentum=momentum, affine=affine),
+  'sep_conv_5x5' : lambda C, stride, BatchNorm, eps, momentum, affine: SepConv(C, C, 5, stride, 2, BatchNorm, eps=eps, momentum=momentum, affine=affine),
+  'dil_conv_3x3' : lambda C, stride, BatchNorm, eps, momentum, affine: DilConv(C, C, 3, stride, 2, 2, BatchNorm, eps=eps, momentum=momentum, affine=affine),
+  'dil_conv_5x5' : lambda C, stride, BatchNorm, eps, momentum, affine: DilConv(C, C, 5, stride, 4, 2, BatchNorm, eps=eps, momentum=momentum, affine=affine),
 }
 
 class ReLUConvBN(nn.Module):
 
-  def __init__(self, C_in, C_out, kernel_size, stride, padding, eps=1e-5, momentum=0.1, affine=True):
+  def __init__(self, C_in, C_out, kernel_size, stride, padding, BatchNorm, eps=1e-5, momentum=0.1, affine=True):
     super(ReLUConvBN, self).__init__()
     self.op = nn.Sequential(
       nn.ReLU(inplace=False),
       nn.Conv2d(C_in, C_out, kernel_size, stride=stride, padding=padding, bias=False),
-      nn.BatchNorm2d(C_out, eps=eps, momentum=momentum, affine=affine)
+      BatchNorm(C_out, eps=eps, momentum=momentum, affine=affine)
     )
 
   def forward(self, x):
@@ -27,13 +27,13 @@ class ReLUConvBN(nn.Module):
 
 class DilConv(nn.Module):
 
-  def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, eps=1e-5, momentum=0.1, affine=True):
+  def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, BatchNorm, eps=1e-5, momentum=0.1, affine=True):
     super(DilConv, self).__init__()
     self.op = nn.Sequential(
       nn.ReLU(inplace=False),
       nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=C_in, bias=False),
       nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False),
-      nn.BatchNorm2d(C_out, eps=eps, momentum=momentum, affine=affine)
+      BatchNorm(C_out, eps=eps, momentum=momentum, affine=affine)
       )
 
   def forward(self, x):
@@ -42,17 +42,17 @@ class DilConv(nn.Module):
 
 class SepConv(nn.Module):
 
-  def __init__(self, C_in, C_out, kernel_size, stride, padding, eps=1e-5, momentum=0.1, affine=True):
+  def __init__(self, C_in, C_out, kernel_size, stride, padding, BatchNorm, eps=1e-5, momentum=0.1, affine=True):
     super(SepConv, self).__init__()
     self.op = nn.Sequential(
       nn.ReLU(inplace=False),
       nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, groups=C_in, bias=False),
       nn.Conv2d(C_in, C_in, kernel_size=1, padding=0, bias=False),
-      nn.BatchNorm2d(C_in, eps=eps, momentum=momentum, affine=affine),
+      BatchNorm(C_in, eps=eps, momentum=momentum, affine=affine),
       nn.ReLU(inplace=False),
       nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=1, padding=padding, groups=C_in, bias=False),
       nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False),
-      nn.BatchNorm2d(C_out, eps=eps, momentum=momentum, affine=affine),
+      BatchNorm(C_out, eps=eps, momentum=momentum, affine=affine),
       )
 
 
@@ -82,13 +82,13 @@ class Zero(nn.Module):
 
 
 class FactorizedReduce(nn.Module):
-  def __init__(self, C_in, C_out, eps=1e-5, momentum=0.1, affine=True):
+  def __init__(self, C_in, C_out, BatchNorm, eps=1e-5, momentum=0.1, affine=True):
     super(FactorizedReduce, self).__init__()
     assert C_out % 2 == 0
     self.relu = nn.ReLU(inplace=False)
     self.conv_1 = nn.Conv2d(C_in, C_out // 2, 1, stride=2, padding=0, bias=False)
     self.conv_2 = nn.Conv2d(C_in, C_out // 2, 1, stride=2, padding=0, bias=False)
-    self.bn = nn.BatchNorm2d(C_out, eps=eps, momentum=momentum, affine=affine)
+    self.bn = BatchNorm(C_out, eps=eps, momentum=momentum, affine=affine)
     self.pad = nn.ConstantPad2d((0, 1, 0, 1), 0)
 
   def forward(self, x):
@@ -99,13 +99,13 @@ class FactorizedReduce(nn.Module):
     return out
 
 class DoubleFactorizedReduce(nn.Module):
-  def __init__(self, C_in, C_out, ,eps=1e-5, momentum=0.1, affine=True):
+  def __init__(self, C_in, C_out, BatchNorm, eps=1e-5, momentum=0.1, affine=True):
     super(DoubleFactorizedReduce, self).__init__()
     assert C_out % 2 == 0
     self.relu = nn.ReLU(inplace=False)
     self.conv_1 = nn.Conv2d(C_in, C_out // 2, 1, stride=4, padding=0, bias=False)
     self.conv_2 = nn.Conv2d(C_in, C_out // 2, 1, stride=4, padding=0, bias=False)
-    self.bn = nn.BatchNorm2d(C_out, affine=affine)
+    self.bn = BatchNorm(C_out, affine=affine)
     self.pad = nn.ConstantPad2d((0, 2, 0, 2), 0)
 
 

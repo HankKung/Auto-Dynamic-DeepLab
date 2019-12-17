@@ -47,7 +47,9 @@ class trainNew(object):
         
         if args.network == 'dist':
 #            new_network_arch = [0, 1, 2, 3, 2, 2, 1, 0, 1, 2, 3, 2]
-            new_network_arch = [1, 0, 0, 1, 2, 3, 2, 3, 3, 2, 2, 3]
+#            new_network_arch = [1, 0, 0, 1, 2, 3, 2, 3, 3, 2, 2, 3]
+#            new_network_arch = [1, 2, 3, 2, 3, 2, 1, 2, 1, 2, 1, 2]
+            new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
             block_multiplier_d=4
             step_d=4
         elif args.network == 'autodeeplab':
@@ -78,7 +80,8 @@ class trainNew(object):
                          num_classes=self.nclass,
                          device_num_layers=6,
                          block_multiplier_d=block_multiplier_d,
-                         step_d=step_d)
+                         step_d=step_d,
+                         sync_bn=args.sync_bn)
 
         train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
                         {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
@@ -110,6 +113,9 @@ class trainNew(object):
 
         # Using cuda
         if args.cuda:
+            if args.sync_bn:
+                self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
+                patch_replication_callback(self.model)
             self.model = self.model.cuda()
 
         # Resuming checkpoint
@@ -326,7 +332,7 @@ def main():
     parser.add_argument('--ft', action='store_true', default=False,
                         help='finetuning on a different dataset')
     # evaluation option
-    parser.add_argument('--eval-interval', type=int, default=10,
+    parser.add_argument('--eval-interval', type=int, default=100,
                         help='evaluuation interval (default: 1)')
     parser.add_argument('--no-val', action='store_true', default=False,
                         help='skip validation during training')
@@ -384,7 +390,7 @@ def main():
     print('Total Epoches:', new_trainer.args.epochs)
     for epoch in range(new_trainer.args.start_epoch, new_trainer.args.epochs):
         new_trainer.training(epoch)
-        if not new_trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1) or epoch > int(0.9*new_trainer.args.epochs):
+        if not new_trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1) or epoch > int(0.97*new_trainer.args.epochs):
             new_trainer.validation(epoch)
 
     new_trainer.writer.close()
