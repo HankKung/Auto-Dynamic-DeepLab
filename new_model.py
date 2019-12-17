@@ -59,7 +59,7 @@ class Cell(nn.Module):
          
         for x in self.cell_arch:
             primitive = PRIMITIVES[x[1]]
-            op = OPS[primitive](self.C_out, stride=1, BatchNorm, eps=eps, momentum=momentum, affine=True)
+            op = OPS[primitive](self.C_out, 1, BatchNorm, eps=eps, momentum=momentum, affine=True)
             self._ops.append(op)
 
     def scale_dimension(self, dim, scale):
@@ -111,7 +111,7 @@ class Cell(nn.Module):
 class new_device_Model (nn.Module):
     def __init__(self, network_arch, cell_arch, num_classes, num_layers, BatchNorm,\
         criterion=None, filter_multiplier=20, block_multiplier=4, step=4, \
-        cell=Cell, full_net='deeplab_v3+'):
+        cell=Cell):
         super(new_device_Model, self).__init__()
         
         self.cells = nn.ModuleList()
@@ -126,7 +126,7 @@ class new_device_Model (nn.Module):
         self._full_net = full_net
         initial_fm = 128
 
-        self.low_level_conv = nn.Sequential(nn.Conv2d(256, 48, 1),
+        self.low_level_conv = nn.Sequential(nn.Conv2d(160, 48, 1),
                                     BatchNorm(48),
                                     nn.ReLU())
         self.decoder = Decoder(num_classes, BatchNorm)
@@ -220,7 +220,7 @@ class new_device_Model (nn.Module):
    
         last_output = two_last_inputs[-1]
         aspp_result = self.aspp_device(last_output)
-        return  low_level, two_last_inputs, aspp_result
+        return low_level, two_last_inputs, aspp_result
 
 class new_cloud_Model (nn.Module):
     def __init__(self, network_arch, cell_arch_d, cell_arch_c, num_classes, \
@@ -318,12 +318,12 @@ class new_cloud_Model (nn.Module):
             
         last_output = two_last_inputs[-1]
 
-        device_output = F.interpolate(device_output, 2, mode='bilinear')
-        device_output = self.device.decoder(device_output, low_level)
+        device_output = F.interpolate(device_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+        device_output = self.device.decoder(device_output, low_level, size)
 
         cloud_output = self.aspp_cloud(last_output)
-        cloud_output = F.interpolate(cloud_output, 2, mode='bilinear')
-        cloud_output = cloud.decoder(cloud_output, low_level)         
+        cloud_output = F.interpolate(cloud_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+        cloud_output = cloud.decoder(cloud_output, low_level, size)         
 
         return device_output, cloud_output
 
@@ -353,7 +353,7 @@ class new_cloud_Model (nn.Module):
                             yield p
 
 class ASPP_train(nn.Module):
-    def __init__(self, C, depth, num_classes, conv=nn.Conv2d, BatchNorm, eps=1e-5, momentum=0.1, mult=1):
+    def __init__(self, C, depth, num_classes, BatchNorm, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1):
         super(ASPP_train, self).__init__()
         self._C = C
         self._depth = depth
@@ -380,7 +380,6 @@ class ASPP_train(nn.Module):
         self.conv1 = conv(depth * 5, depth, kernel_size=1, stride=1,
                                bias=False)
         self.bn1 = BatchNorm(depth)
-        self.conv3 = nn.Conv2d(depth, num_classes, kernel_size=1, stride=1)
 
     def forward(self, x):
         x1 = self.aspp1(x)
@@ -408,7 +407,7 @@ class ASPP_train(nn.Module):
 
         return x
 
-class Decoder():
+class Decoder(nn.Module):
 
     def __init__(self, n_class, BatchNorm, output_stride=8):
         super(Decoder, self).__init__()
@@ -421,10 +420,10 @@ class Decoder():
                                     BatchNorm(256),
                                     nn.ReLU(),
                                     nn.Conv2d(256, n_class, kernel_size=1, stride=1))
-    def forward(self, x, low_level):
+    def forward(self, x, low_level, size):
         x = torch.cat((x, low_level), 1)
         x = self._conv(x)
-        x = F.interpolate(x, self.output_stride, mode='bilinear')
+        x = F.interpolate(x, size, mode='bilinear')
 
         return x
 
