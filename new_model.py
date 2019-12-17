@@ -21,8 +21,8 @@ class Cell(nn.Module):
                  filter_multiplier, downup_sample, pre_downup_sample, prev_prev_block=0):
 
         super(Cell, self).__init__()
-        eps = 0.001
-        momentum = 3e-4
+        eps = 1e-5
+        momentum = 0.1
         self.cell_arch = cell_arch
         self.C_in = block_multiplier * filter_multiplier
         self.C_out = filter_multiplier
@@ -48,7 +48,7 @@ class Cell(nn.Module):
         if pre_downup_sample == -1:
             self.pre_preprocess = FactorizedReduce(self.C_prev_prev, self.C_out, eps=eps, momentum=momentum)
         elif pre_downup_sample == -2:
-            self.pre_preprocess = DoubleFactorizedReduce(self.C_prev_prev,, self.C_out, eps=eps, momentum=momentum)
+            self.pre_preprocess = DoubleFactorizedReduce(self.C_prev_prev, self.C_out, eps=eps, momentum=momentum)
         elif pre_downup_sample == 1:
             self.pre_pre_scale = 2
         elif pre_downup_sample == 2:
@@ -194,7 +194,7 @@ class new_device_Model (nn.Module):
         else:
             return
         self.aspp_device = ASPP_train(filter_multiplier * step * filter_param_dict[self.network_arch[-1]], \
-                                      filter_multiplier * step *filter_param_dict[self.network_arch[-1]], \
+                                      256, \
                                       num_classes, mult=mult)
 
     def forward(self, x):
@@ -289,7 +289,7 @@ class new_cloud_Model (nn.Module):
             return
 
         self.aspp_cloud = ASPP_train(filter_multiplier * step_c * filter_param_dict[self.network_arch[-1]], \
-                                     filter_multiplier * step_c * filter_param_dict[self.network_arch[-1]], \
+                                     256, \
                                      num_classes, mult=mult)
 
     def forward(self, x):
@@ -332,7 +332,7 @@ class new_cloud_Model (nn.Module):
                             yield p
 
 class ASPP_train(nn.Module):
-    def __init__(self, C, depth, num_classes, conv=nn.Conv2d, norm=nn.BatchNorm2d, eps=1e-3, momentum=0.0003, mult=1):
+    def __init__(self, C, depth, num_classes, conv=nn.Conv2d, norm=nn.BatchNorm2d, eps=1e-5, momentum=0.1, mult=1):
         super(ASPP_train, self).__init__()
         self._C = C
         self._depth = depth
