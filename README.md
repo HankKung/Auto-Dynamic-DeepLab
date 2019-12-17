@@ -19,7 +19,7 @@ bash retrain_cityscapes
 
 ## Citation
 
-### Acknowledgement
+## Acknowledgement
 [Auto-DeepLab](https://github.com/NoamRosenberg/AutoML)
 
 [pytorch-deeplab-xception](https://github.com/jfzhang95/pytorch-deeplab-xception)
