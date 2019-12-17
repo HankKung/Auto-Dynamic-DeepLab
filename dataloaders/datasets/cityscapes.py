@@ -102,12 +102,17 @@ class CityscapesSegmentation(data.Dataset):
                 tr.RandomHorizontalFlip(),
                 tr.FixedResize_Search(resize=self.args.resize),
                 tr.RandomCrop(crop_size=self.args.crop_size),
+            #tr.RandomCrop(crop_size=self.args.crop_size),
+ #           tr.RandomHorizontalFlip(),
+#            tr.RandomScaleCrop(base_size=self.args.resize, crop_size=self.args.crop_size, fill=255),
+ #               tr.RandomGaussianBlur(),
                 tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 tr.ToTensor()])
         else:
             composed_transforms = transforms.Compose([
                 tr.RandomHorizontalFlip(),
                 tr.RandomScaleCrop(base_size=self.args.resize, crop_size=self.args.crop_size, fill=255),
+#                tr.RandomGaussianBlur(),
                 tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 tr.ToTensor()])
 
@@ -117,12 +122,21 @@ class CityscapesSegmentation(data.Dataset):
         if self.search:
             composed_transforms = transforms.Compose([
               tr.FixedResize_Search(resize=513),
+#              tr.RandomCrop(crop_size=self.args.crop_size),
               tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
               tr.ToTensor()])
        
         else:
             composed_transforms = transforms.Compose([
-             tr.FixedResize(resize=(1025,2049))])
+             tr.Crop_for_eval(),
+#             tr.ToTensor()]) 
+#             tr.FixedResize(resize=(1025,2049))])
+ #           tr.FixedResize(resize=self.args.resize),
+#            tr.RandomCrop(crop_size=self.args.crop_size),
+#            tr.FixedResize(resize=(1025, 2049)),
+            #tr.FixScaleCrop(crop_size=self.args.crop_size), #TODO:CHECK THIS
+              tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+              tr.ToTensor()])
 
         return composed_transforms(sample)
 

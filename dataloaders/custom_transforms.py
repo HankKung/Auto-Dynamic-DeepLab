@@ -235,3 +235,15 @@ class FixedResize_Search(object):
         return {'image': img,
                 'label': mask}
 
+class Crop_for_eval(object):
+    def __init__(self):
+        self.fill=255
+
+    def __call__(self, sample):
+        img = sample['image']
+        mask = sample['label']
+        img = ImageOps.expand(img, border=(0, 0, 1, 1), fill=0)
+        mask = ImageOps.expand(mask, border=(0, 0, 1, 1), fill=self.fill)
+
+        return {'image': img,
+                'label': mask}
