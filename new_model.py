@@ -8,49 +8,37 @@ import torch.nn.functional as F
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 import numpy as np
 from operations import *
-from modeling.decoder import *
-
-
-
-
 
 class Cell(nn.Module):
 
-    def __init__(self, BatchNorm, steps, block_multiplier, prev_prev_fmultiplier,
-                 prev_filter_multiplier,
+    def __init__(self, BatchNorm, B, 
+                 prev_prev_C, prev_C, 
                  cell_arch, network_arch,
-                 filter_multiplier, downup_sample, pre_downup_sample, prev_prev_block=0):
+                 C_out,
+                 downup_sample, pre_downup_sample):
 
         super(Cell, self).__init__()
         eps = 1e-5
         momentum = 0.1
 
         self.cell_arch = cell_arch
-        self.C_in = block_multiplier * filter_multiplier
-        self.C_out = filter_multiplier
-        self.C_prev = int(block_multiplier * prev_filter_multiplier)
-        if prev_prev_block != 0:
-            self.C_prev_prev = int(prev_prev_block * prev_prev_fmultiplier)
-        else:
-            self.C_prev_prev = int(block_multiplier * prev_prev_fmultiplier)
         self.downup_sample = downup_sample
         self.pre_downup_sample = pre_downup_sample
         self.pre_preprocess = ReLUConvBN(
-            self.C_prev_prev, self.C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
+            prev_prev_C, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
         self.preprocess = ReLUConvBN(
-            self.C_prev, self.C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
-        self._steps = steps
-        self.block_multiplier = block_multiplier
+            prev_C, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
+        self.B = B
         self._ops = nn.ModuleList()
         if downup_sample == -1:
-            self.preprocess = FactorizedReduce(self.C_prev, self.C_out, BatchNorm, eps=eps, momentum=momentum)
+            self.preprocess = FactorizedReduce(prev_C, C_out, BatchNorm, eps=eps, momentum=momentum)
         elif downup_sample == 1:
             self.scale = 2
 
         if pre_downup_sample == -1:
-            self.pre_preprocess = FactorizedReduce(self.C_prev_prev, self.C_out, BatchNorm, eps=eps, momentum=momentum)
+            self.pre_preprocess = FactorizedReduce(prev_prev_C, C_out, BatchNorm, eps=eps, momentum=momentum)
         elif pre_downup_sample == -2:
-            self.pre_preprocess = DoubleFactorizedReduce(self.C_prev_prev, self.C_out, BatchNorm, eps=eps, momentum=momentum)
+            self.pre_preprocess = DoubleFactorizedReduce(prev_prev_C, C_out, BatchNorm, eps=eps, momentum=momentum)
         elif pre_downup_sample == 1:
             self.pre_pre_scale = 2
         elif pre_downup_sample == 2:
@@ -59,7 +47,7 @@ class Cell(nn.Module):
          
         for x in self.cell_arch:
             primitive = PRIMITIVES[x[1]]
-            op = OPS[primitive](self.C_out, 1, BatchNorm, eps=eps, momentum=momentum, affine=True)
+            op = OPS[primitive](C_out, 1, BatchNorm, eps=eps, momentum=momentum, affine=True)
             self._ops.append(op)
 
     def scale_dimension(self, dim, scale):
@@ -88,7 +76,7 @@ class Cell(nn.Module):
 
         offset = 0
         ops_index = 0
-        for i in range(self._steps):
+        for i in range(self.B):
             new_states = []
             for j, h in enumerate(states):
                 branch_index = offset + j
@@ -104,14 +92,12 @@ class Cell(nn.Module):
             offset += len(states)
             states.append(s)
 
-        concat_feature = torch.cat(states[-self._steps:], dim=1)
+        concat_feature = torch.cat(states[-self.B:], dim=1)
         return prev_input, concat_feature
-
 
 class new_device_Model (nn.Module):
     def __init__(self, network_arch, cell_arch, num_classes, num_layers, BatchNorm,\
-        criterion=None, filter_multiplier=20, block_multiplier=4, step=4, \
-        cell=Cell):
+        criterion=None, F=20, B=4):
         super(new_device_Model, self).__init__()
         
         self.cells = nn.ModuleList()
@@ -119,12 +105,6 @@ class new_device_Model (nn.Module):
         self.cell_arch = torch.from_numpy(cell_arch)
         self._num_layers = num_layers
         self._num_classes = num_classes
-        self._step = step
-        self._block_multiplier = block_multiplier
-        self._filter_multiplier = filter_multiplier
-        self._criterion = criterion
-        self._full_net = full_net
-        initial_fm = 128
 
         self.low_level_conv = nn.Sequential(nn.Conv2d(160, 48, 1),
                                     BatchNorm(48),
@@ -141,58 +121,47 @@ class new_device_Model (nn.Module):
             BatchNorm(64),
             nn.ReLU()
         )
-        # TODO: first two channels should be set automatically
-        ini_initial_fm = 64
+
         self.stem2 = nn.Sequential(
-            nn.Conv2d(64, initial_fm, 3, stride=2, padding=1),
-            BatchNorm(initial_fm),
+            nn.Conv2d(64, 128, 3, stride=2, padding=1),
+            BatchNorm(128),
             nn.ReLU()
         )
-       
-        filter_param_dict = {0: 1, 1: 2, 2: 4, 3: 8}
+        FB = F * B
+        fm = {0: 1, 1: 2, 2: 4, 3: 8}
         for i in range(self._num_layers):
 
             level = network_arch[i]
             prev_level = network_arch[i-1]
             prev_prev_level = network_arch[i-2]
 
+            downup_sample = int(prev_level - level)
+            pre_downup_sample = int(prev_prev_level - level)
             if i == 0:
                 downup_sample = int(0 - level)
                 pre_downup_sample = int(-1 - level)
-                _cell = cell(BatchNorm, self._step, self._block_multiplier, ini_initial_fm / block_multiplier,
-                             initial_fm / block_multiplier,
+                _cell = Cell(BatchNorm, B,
+                             64, 128,                               # pre_pre_c & pre_c
                              self.cell_arch, self.network_arch[i],
-                             self._filter_multiplier *
-                             filter_param_dict[level],
-                             downup_sample,
-                             pre_downup_sample)
-            else:
-
-                downup_sample = int(prev_level- level)
+                             F * fm[level],                         # C_out
+                             downup_sample, pre_downup_sample) 
                 
-                if i == 1:
-                    pre_downup_sample = int(0 - level)
-                    _cell = cell(BatchNorm, self._step, self._block_multiplier,
-                                 initial_fm / block_multiplier,
-                                 self._filter_multiplier * filter_param_dict[prev_level],
-                                 self.cell_arch, self.network_arch[i],
-                                 self._filter_multiplier *
-                                 filter_param_dict[level],
-                                 downup_sample,
-                                 pre_downup_sample)
-                else:
-                    downup_sample = int(prev_level - level)
-                    pre_downup_sample = int(prev_prev_level - level)
-                    _cell = cell(BatchNorm, self._step, self._block_multiplier, self._filter_multiplier * filter_param_dict[prev_prev_level],
-                                 self._filter_multiplier *
-                                 filter_param_dict[prev_level],
-                                 self.cell_arch, self.network_arch[i],
-                                 self._filter_multiplier *
-                                 filter_param_dict[level],
-                                 downup_sample,
-                                 pre_downup_sample)
+            elif i == 1:
+                pre_downup_sample = int(0 - level)
+                _cell = Cell(BatchNorm, B,
+                             128, FB * fm[prev_level],
+                             self.cell_arch, self.network_arch[i],
+                             F * fm[level],
+                             downup_sample, pre_downup_sample)
+            else:
+                _cell = Cell(BatchNorm, B, 
+                             FB * fm[prev_prev_level], FB * fm[prev_level],
+                             self.cell_arch, self.network_arch[i],
+                             F * fm[level],
+                             downup_sample, pre_downup_sample)
        
             self.cells += [_cell]
+
         if network_arch[-1] == 1:
             mult = 2
         elif network_arch[-1] == 2:
@@ -201,9 +170,9 @@ class new_device_Model (nn.Module):
             mult = 0.5
         else:
             return
-        self.aspp_device = ASPP_train(filter_multiplier * step * filter_param_dict[self.network_arch[-1]], \
-                                      256, \
-                                      num_classes, BatchNorm, mult=mult)
+        self.aspp_device = ASPP_train(FB * fm[self.network_arch[-1]], \
+                                      256, num_classes, BatchNorm, mult=mult)
+        self._init_weight()
 
     def forward(self, x):
         stem = self.stem0(x)
@@ -222,11 +191,23 @@ class new_device_Model (nn.Module):
         aspp_result = self.aspp_device(last_output)
         return low_level, two_last_inputs, aspp_result
 
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, math.sqrt(2. / n))
+                torch.nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, SynchronizedBatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
 class new_cloud_Model (nn.Module):
     def __init__(self, network_arch, cell_arch_d, cell_arch_c, num_classes, \
-        device_num_layers, \
-        criterion=None, filter_multiplier=20, block_multiplier_c=5, step_c=5, \
-        block_multiplier_d=4, step_d=4, cell=Cell, sync_bn=False):
+        device_num_layers, F=20, B_c=5, \
+        B_d=4, sync_bn=False):
         super(new_cloud_Model, self).__init__()
 
         if sync_bn == True:
@@ -239,61 +220,45 @@ class new_cloud_Model (nn.Module):
         self.cell_arch_c = torch.from_numpy(cell_arch_c)
         self._num_layers = len(self.network_arch)
         self._num_classes = num_classes
-        self._step = step_c
-        self._block_multiplier_c = block_multiplier_c
-        self._block_multiplier_d = block_multiplier_d
-        self._filter_multiplier = filter_multiplier
-        self._criterion = criterion
 
         device_layer = network_arch[:device_num_layers]
-        self.device = new_device_Model(device_layer, cell_arch_d, num_classes, device_num_layers \
-            , BatchNorm, block_multiplier=block_multiplier_d, step=step_d)
+        self.device = new_device_Model(device_layer, cell_arch_d, num_classes, device_num_layers, \
+                                       BatchNorm, B=B_d)
         self.decoder = Decoder(num_classes, BatchNorm)
-
         self._num_layers = 12 - len(device_layer)     
    
-        filter_param_dict = {0: 1, 1: 2, 2: 4, 3: 8}
+        fm = {0: 1, 1: 2, 2: 4, 3: 8}
         for i in range(self._num_layers):
 
             level = self.network_arch[i]
             prev_level = self.network_arch[i-1]
             prev_prev_level = self.network_arch[i-2]
 
+            downup_sample = int(prev_level - level)
+            pre_downup_sample = int(prev_prev_level - level)
+
             if i == 0:
                 downup_sample = int(device_layer[-1]-self.network_arch[0])
                 pre_downup_sample = int(device_layer[-2] - self.network_arch[0])
-                _cell = cell(BatchNorm, self._step, self._block_multiplier_d, self._filter_multiplier * filter_param_dict[device_layer[-2]],
-                             self._filter_multiplier * filter_param_dict[device_layer[-1]],
+                _cell = Cell(BatchNorm, B_c, 
+                             F * B_d * fm[device_layer[-2]], F * B_d * fm[device_layer[-1]],
                              self.cell_arch_c, self.network_arch[i],
-                             self._filter_multiplier *
-                             filter_param_dict[level],
-                             downup_sample,
-                             pre_downup_sample)
+                             F * fm[level],
+                             downup_sample, pre_downup_sample)
+            
+            elif i == 1:
+                pre_downup_sample = int(device_layer[-1] - self.network_arch[1])
+                _cell = Cell(BatchNorm, B_c,
+                             F * B_d * fm[device_layer[-1]], F * B_c * fm[self.network_arch[0]],
+                             self.cell_arch_c, self.network_arch[i],
+                             F * fm[level],
+                             downup_sample, pre_downup_sample)
             else:
-                downup_sample = int(prev_level - level)
-                if i == 1:
-                    pre_downup_sample = int(device_layer[-1] - self.network_arch[1])
-                    _cell = cell(BatchNorm, self._step, self._block_multiplier_c,
-                                 self._filter_multiplier * filter_param_dict[device_layer[-1]],
-                                 self._filter_multiplier * filter_param_dict[self.network_arch[0]],
-                                 self.cell_arch_c, self.network_arch[i],
-                                 self._filter_multiplier *
-                                 filter_param_dict[level],
-                                 downup_sample,
-                                 pre_downup_sample,
-                                 prev_prev_block=step_d)
-                else:
-                    downup_sample = int(prev_level - level)
-                    pre_downup_sample = int(prev_prev_level - level)
-                    _cell = cell(BatchNorm, self._step, self._block_multiplier_c, self._filter_multiplier * filter_param_dict[prev_prev_level],
-                                 self._filter_multiplier *
-                                 filter_param_dict[prev_level],
-                                 self.cell_arch_c, self.network_arch[i],
-                                 self._filter_multiplier *
-                                 filter_param_dict[level],
-                                 downup_sample,
-                                 pre_downup_sample)
-            print(downup_sample)          
+                _cell = Cell(BatchNorm, B_c, 
+                             F * B_c * fm[prev_prev_level], F * B_c * fm[prev_level],
+                             self.cell_arch_c, self.network_arch[i],
+                             F * fm[level],
+                             downup_sample, pre_downup_sample)
             self.cells += [_cell]
 
         if network_arch[-1] == 1:
@@ -305,9 +270,9 @@ class new_cloud_Model (nn.Module):
         else:
             return
 
-        self.aspp_cloud = ASPP_train(filter_multiplier * step_c * filter_param_dict[self.network_arch[-1]], \
-                                     256, \
-                                     num_classes, BatchNorm, mult=mult)
+        self.aspp_cloud = ASPP_train(F * B_c * fm[self.network_arch[-1]], 
+                                     256, num_classes, BatchNorm, mult=mult)
+        self._init_weight()
 
     def forward(self, x):
         size = (x.shape[2], x.shape[3])
@@ -323,9 +288,22 @@ class new_cloud_Model (nn.Module):
 
         cloud_output = self.aspp_cloud(last_output)
         cloud_output = F.interpolate(cloud_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-        cloud_output = cloud.decoder(cloud_output, low_level, size)         
+        cloud_output = self.decoder(cloud_output, low_level, size)         
 
         return device_output, cloud_output
+
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, math.sqrt(2. / n))
+                torch.nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, SynchronizedBatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def get_1x_lr_params(self):
         modules = [self.device.stem0, self.device.stem1, self.device.stem2, self.device.cells, self.cells]
@@ -344,7 +322,7 @@ class new_cloud_Model (nn.Module):
                                 if p.requires_grad:
                                     yield p
     def get_10x_lr_params(self):
-        modules = [self.device.aspp_device, self.aspp_cloud]
+        modules = [self.device.aspp_device, self.aspp_cloud, self.device.decoder, self.decoder]
         for i in range(len(modules)):
             for m in modules[i].named_modules():
                 if isinstance(m[1], nn.Conv2d)or isinstance(m[1], nn.BatchNorm2d):
@@ -380,6 +358,8 @@ class ASPP_train(nn.Module):
         self.conv1 = conv(depth * 5, depth, kernel_size=1, stride=1,
                                bias=False)
         self.bn1 = BatchNorm(depth)
+        self._init_weight()
+
 
     def forward(self, x):
         x1 = self.aspp1(x)
@@ -407,6 +387,19 @@ class ASPP_train(nn.Module):
 
         return x
 
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, math.sqrt(2. / n))
+                torch.nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, SynchronizedBatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
 class Decoder(nn.Module):
 
     def __init__(self, n_class, BatchNorm, output_stride=8):
@@ -420,12 +413,27 @@ class Decoder(nn.Module):
                                     BatchNorm(256),
                                     nn.ReLU(),
                                     nn.Conv2d(256, n_class, kernel_size=1, stride=1))
+        self._init_weight()
+
     def forward(self, x, low_level, size):
         x = torch.cat((x, low_level), 1)
         x = self._conv(x)
         x = F.interpolate(x, size, mode='bilinear')
 
         return x
+
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, math.sqrt(2. / n))
+                torch.nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, SynchronizedBatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
 def network_layer_to_space(net_arch):
     for i, layer in enumerate(net_arch):
