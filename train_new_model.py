@@ -6,7 +6,6 @@ from tqdm import tqdm
 from mypath import Path
 from dataloaders import make_data_loader
 from modeling.sync_batchnorm.replicate import patch_replication_callback
-from modeling.deeplab import *
 from utils.loss import SegmentationLosses
 from utils.calculate_weights import calculate_weigths_labels
 from utils.lr_scheduler import LR_Scheduler
@@ -50,8 +49,8 @@ class trainNew(object):
 #            new_network_arch = [1, 0, 0, 1, 2, 3, 2, 3, 3, 2, 2, 3]
 #            new_network_arch = [1, 2, 3, 2, 3, 2, 1, 2, 1, 2, 1, 2]
             new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
-            block_multiplier_d=4
-            step_d=4
+            B_d=4
+
         elif args.network == 'autodeeplab':
             new_network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
             cell = np.zeros((10, 2))
@@ -65,13 +64,10 @@ class trainNew(object):
             cell[7] = [13, 5]
             cell[8] = [19, 7]
             cell[9] = [18, 5]
-        
             cell=np.int_(cell)
             new_cell_arch_d = cell
-            new_cell_arch_c = cell
-            
-            block_multiplier_d=5
-            step_d=5
+            new_cell_arch_c = cell      
+            B_d=5
 
         # Define network
         model = new_cloud_Model(network_arch= new_network_arch,
@@ -79,8 +75,7 @@ class trainNew(object):
                          cell_arch_c = new_cell_arch_c,
                          num_classes=self.nclass,
                          device_num_layers=6,
-                         block_multiplier_d=block_multiplier_d,
-                         step_d=step_d,
+                         B_d=B_d,
                          sync_bn=args.sync_bn)
 
         train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
