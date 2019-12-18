@@ -25,6 +25,7 @@ class ReLUConvBN(nn.Module):
   def forward(self, x):
     return self.op(x)
 
+
 class DilConv(nn.Module):
 
   def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, BatchNorm, eps=1e-5, momentum=0.1, affine=True):
@@ -54,7 +55,6 @@ class SepConv(nn.Module):
       nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False),
       BatchNorm(C_out, eps=eps, momentum=momentum, affine=affine),
       )
-
 
   def forward(self, x):
     return self.op(x)
@@ -107,7 +107,6 @@ class DoubleFactorizedReduce(nn.Module):
     self.conv_2 = nn.Conv2d(C_in, C_out // 2, 1, stride=4, padding=0, bias=False)
     self.bn = BatchNorm(C_out, affine=affine)
     self.pad = nn.ConstantPad2d((0, 2, 0, 2), 0)
-
 
   def forward(self, x):
     x = self.relu(x)

@@ -16,7 +16,6 @@ from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
 from auto_deeplab import AutoDeeplab
-from architect import Architect
 import apex
 try:
     from apex import amp
@@ -114,6 +113,21 @@ class Trainer(object):
             print('cuda finished')
 
 
+        # Using data parallel
+#        if args.cuda and len(self.args.gpu_ids) >1:
+#            if self.opt_level == 'O2' or self.opt_level == 'O3':
+#                print('currently cannot run with nn.DataParallel and optimization level', self.opt_level)
+#            self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
+#            patch_replication_callback(self.model)
+#            print('training on multiple-GPUs')
+
+        #checkpoint = torch.load(args.resume)
+        #print('about to load state_dict')
+        #self.model.load_state_dict(checkpoint['state_dict'])
+        #print('model loaded')
+        #sys.exit()
+
+        # Resuming checkpoint
         self.best_pred = 0.0
         if args.resume is not None:
             if not os.path.isfile(args.resume):
@@ -377,6 +391,9 @@ def main():
                         help='evaluuation interval (default: 1)')
     parser.add_argument('--no-val', action='store_true', default=False,
                         help='skip validation during training')
+    # Robust DARTS method
+    parser.add_argument('--window', type=int, default=5, help='window size of the local average')
+    parser.add_argument('--report_freq_hessian',     type=float,          default=50,             help='report frequency hessian')
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -420,7 +437,7 @@ def main():
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
-        if epoch>54 and not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
+        if epoch>74 and not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
 
     trainer.writer.close()
