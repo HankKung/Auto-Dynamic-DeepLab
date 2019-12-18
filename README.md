@@ -19,3 +19,13 @@ bash retrain_cityscapes
 
 ## Citation
 
+## Acknowledgement
+[Auto-DeepLab](https://github.com/NoamRosenberg/AutoML)
+
+[pytorch-deeplab-xception](https://github.com/jfzhang95/pytorch-deeplab-xception)
+
+[DeepLabv3.pytorch](https://github.com/chenxi116/DeepLabv3.pytorch)
+
+[Synchronized-BatchNorm-PyTorch](https://github.com/vacancy/Synchronized-BatchNorm-PyTorch)
+
+
