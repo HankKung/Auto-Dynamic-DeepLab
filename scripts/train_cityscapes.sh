@@ -5,4 +5,3 @@ CUDA_VISIBLE_DEVICES=0 python ../train_autodeeplab.py \
  --base_size 512 \
  --lr 0.08 --min_lr 0.003 --arch-lr 0.015 \
  --opt_level O2 --use_amp 
-# --resume '/home/user/DistNAS-simple/run/cityscapes/dist/experiment_7/checkpoint.pth.tar'
