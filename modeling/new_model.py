@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
 import numpy as np
-import cell_level_search
-from genotypes import PRIMITIVES
-from genotypes import Genotype
+from modeling import cell_level_search
+from modeling.genotypes import PRIMITIVES
+from modeling.genotypes import Genotype
 import torch.nn.functional as F
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 import numpy as np
-from operations import *
+from modeling.operations import *
 
 class Cell(nn.Module):
 
