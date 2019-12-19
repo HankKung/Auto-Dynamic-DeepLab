@@ -11,12 +11,18 @@ class VOCSegmentation(Dataset):
     """
     PascalVoc dataset
     """
+    CLASSES = [
+      'background', 'aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus',
+      'car', 'cat', 'chair', 'cow', 'diningtable', 'dog', 'horse',
+      'motorbike', 'person', 'potted-plant', 'sheep', 'sofa', 'train',
+      'tv/monitor'
+    ]
+
     NUM_CLASSES = 21
 
     def __init__(self,
-                 args,
-                 base_dir=Path.db_root_dir('pascal'),
-                 split='train',
+                 root,
+                 train=True
                  ):
         """
         :param base_dir: path to VOC dataset directory
@@ -24,67 +30,49 @@ class VOCSegmentation(Dataset):
         :param transform: transform to apply
         """
         super().__init__()
-        self._base_dir = base_dir
-        self._image_dir = os.path.join(self._base_dir, 'JPEGImages')
-        self._cat_dir = os.path.join(self._base_dir, 'SegmentationClass')
+        self.root = root
+        self.train = train
 
-        if isinstance(split, str):
-            self.split = [split]
+        _voc_root = os.path.join(self.root, 'VOC2012')
+        _list_dir = os.path.join(_voc_root, 'list')
+
+        if self.train:
+            _list_f = os.path.join(_list_dir, 'train_aug.txt')
         else:
-            split.sort()
-            self.split = split
+            _list_f = os.path.join(_list_dir, 'val.txt')
 
-        self.args = args
-
-        _splits_dir = os.path.join(self._base_dir, 'ImageSets', 'Segmentation')
-
-        self.im_ids = []
         self.images = []
-        self.categories = []
-
-        for splt in self.split:
-            with open(os.path.join(os.path.join(_splits_dir, splt + '.txt')), "r") as f:
-                lines = f.read().splitlines()
-
-            for ii, line in enumerate(lines):
-                _image = os.path.join(self._image_dir, line + ".jpg")
-                _cat = os.path.join(self._cat_dir, line + ".png")
-                assert os.path.isfile(_image)
-                assert os.path.isfile(_cat)
-                self.im_ids.append(line)
-                self.images.append(_image)
-                self.categories.append(_cat)
-
-        assert (len(self.images) == len(self.categories))
+        self.masks = []
+        with open(_list_f, 'r') as lines:
+          for line in lines:
+            _image = _voc_root + line.split()[0]
+            _mask = _voc_root + line.split()[1]
+            assert os.path.isfile(_image)
+            assert os.path.isfile(_mask)
+            self.images.append(_image)
+            self.masks.append(_mask)
 
         # Display stats
-        print('Number of images in {}: {:d}'.format(split, len(self.images)))
+        print('Number of images : {:d}'.format(len(self.images)))
 
     def __len__(self):
         return len(self.images)
 
 
     def __getitem__(self, index):
-        _img, _target = self._make_img_gt_point_pair(index)
+        _img = Image.open(self.images[index]).convert('RGB')
+        _target = Image.open(self.masks[index])
         sample = {'image': _img, 'label': _target}
 
-        for split in self.split:
-            if split == "train":
-                return self.transform_tr(sample)
-            elif split == 'val':
-                return self.transform_val(sample)
-
-
-    def _make_img_gt_point_pair(self, index):
-        _img = Image.open(self.images[index]).convert('RGB')
-        _target = Image.open(self.categories[index])
-
-        return _img, _target
+        if self.train:
+            return self.transform_tr(sample)
+        else:
+            return self.transform_val(sample)
 
     def transform_tr(self, sample):
         composed_transforms = transforms.Compose([
-            tr.FixedResize(resize=self.args.resize),
-            tr.FixScaleCrop(crop_size=self.args.crop_size), #TODO:CHECK THIS
+            tr.RandomHorizontalFlip(),
+            tr.RandomScaleCrop(base_size=513, crop_size=513, fill=255),
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             tr.ToTensor()])
 
@@ -92,7 +80,7 @@ class VOCSegmentation(Dataset):
 
     def transform_val(self, sample):
         composed_transforms = transforms.Compose([
-            tr.FixScaleCrop(crop_size=self.args.crop_size),
+            tr.Crop_for_eval(),
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             tr.ToTensor()])
 

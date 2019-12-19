@@ -122,7 +122,7 @@ class CityscapesSegmentation(data.Dataset):
        
         else:
             composed_transforms = transforms.Compose([
-             tr.Crop_for_eval(),
+              tr.Crop_for_eval(),
               tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
               tr.ToTensor()])
 
