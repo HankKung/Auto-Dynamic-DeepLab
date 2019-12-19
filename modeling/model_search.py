@@ -1,115 +1,109 @@
 import torch
 import torch.nn as nn
 import numpy as np
-import cell_level_search
-from genotypes import PRIMITIVES
+from modeling import cell_level_search
+from modeling.genotypes import PRIMITIVES
 import torch.nn.functional as F
-from operations import *
-from decoding_formulas import Decoder
+from modeling.operations import *
+from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 
 class AutoDeeplab (nn.Module) :
-    def __init__(self, num_classes, num_layers, criterion = None, \
-     filter_multiplier = 8, block_multiplier_d = 4, block_multiplier_c = 5, \
-     step_d = 4, step_c = 5, distributed_layer=5 ,cell=cell_level_search.Cell):
+    def __init__(self, num_classes, num_layers, F=8, B_d=4, B_c=5, 
+                 distributed_layer=5, sync_bn=False ,cell=cell_level_search.Cell):
         super(AutoDeeplab, self).__init__()
 
+        BatchNorm = SynchronizedBatchNorm2d if sync_bn == True else nn.BatchNorm2d
         self.cells = nn.ModuleList()
         self._num_layers = num_layers
         self._num_classes = num_classes
-        self._step_d = step_d
-        self._step_c = step_c
-        self._block_multiplier_d = block_multiplier_d
-        self._block_multiplier_c = block_multiplier_c
-        self._filter_multiplier = filter_multiplier
-        self._criterion = criterion
+        self.B_d = B_d
+        self.B_c = B_c
         self.distributed_layer = distributed_layer
         self._initialize_alphas_betas ()
 
-        f_initial = int(self._filter_multiplier)
+        f_initial = F * B_d
         half_f_initial = int(f_initial / 2)
 
         self.stem0 = nn.Sequential(
-            nn.Conv2d(3, half_f_initial * self._block_multiplier_d, 3, stride=2, padding=1),
-            nn.BatchNorm2d(half_f_initial* self._block_multiplier_d),
+            nn.Conv2d(3, half_f_initial, 3, stride=2, padding=1),
+            BatchNorm(half_f_initial),
             nn.ReLU ()
         )
         self.stem1 = nn.Sequential(
-            nn.Conv2d(half_f_initial* self._block_multiplier_d, f_initial* self._block_multiplier_d, 3, stride=2, padding=1),
-            nn.BatchNorm2d(f_initial* self._block_multiplier_d),
+            nn.Conv2d(half_f_initial, f_initial, 3, stride=2, padding=1),
+            BatchNorm(f_initial),
             nn.ReLU ()
         )
 
-
-        # intitial_fm = C_initial
+        FBD = F * B_d
+        FBC = F * B_c
         for i in range (self._num_layers) :
 
             if i == 0 :
-                cell1 = cell (self._step_d, self._block_multiplier_d, half_f_initial,
+                cell1 = cell (B_d, half_f_initial,
                               None, f_initial, None,
-                              self._filter_multiplier, pre_preprocess_sample_rate=0.5)
-                cell2 = cell (self._step_d, self._block_multiplier_d, half_f_initial,
+                              F, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.5)
+                cell2 = cell (B_d, half_f_initial,
                               f_initial, None, None,
-                              self._filter_multiplier * 2, pre_preprocess_sample_rate=0.25)
+                              F * 2, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.25)
                 self.cells += [cell1]
                 self.cells += [cell2]
             elif i == 1 :
-                cell1 = cell (self._step_d, self._block_multiplier_d, f_initial,
-                              None, self._filter_multiplier, self._filter_multiplier * 2,
-                              self._filter_multiplier)
+                cell1 = cell (B_d,, f_initial,
+                              None, F, F * 2,
+                              F, BatchNorm=BatchNorm)
 
-                cell2 = cell (self._step_d, self._block_multiplier_d, f_initial,
-                              self._filter_multiplier, self._filter_multiplier * 2, None,
-                              self._filter_multiplier * 2, pre_preprocess_sample_rate=0.5)
+                cell2 = cell (B_d, f_initial,
+                              F, F * 2, None,
+                              F * 2, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.5)
 
-                cell3 = cell (self._step_d, self._block_multiplier_d, f_initial,
-                              self._filter_multiplier * 2, None, None,
-                              self._filter_multiplier * 4, pre_preprocess_sample_rate=0.25)
+                cell3 = cell (B_d, f_initial,
+                              FBD * 2, None, None,
+                              F * 4, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.25)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
                 self.cells += [cell3]
 
             elif i == 2 :
-                cell1 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier,
-                              None, self._filter_multiplier, self._filter_multiplier * 2,
-                              self._filter_multiplier)
+                cell1 = cell (B_d, FBD,
+                              None, FBD, FBD * 2,
+                              F, BatchNorm=BatchNorm)
 
-                cell2 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 2,
-                              self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2)
+                cell2 = cell (B_d, FBD * 2,
+                              FBD, FBD * 2, FBD * 4,
+                              F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 2,
-                              self._filter_multiplier * 2, self._filter_multiplier * 4, None,
-                              self._filter_multiplier * 4, pre_preprocess_sample_rate=0.5)
+                cell3 = cell (B_d, FBD * 2,
+                              FBD * 2, FBD * 4, None,
+                              F * 4, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.5)
 
-                cell4 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 2,
-                              self._filter_multiplier * 4, None, None,
-                              self._filter_multiplier * 8, pre_preprocess_sample_rate=0.25)
+                cell4 = cell (B_d, FBD * 2,
+                              FBD * 4, None, None,
+                              F * 8, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.25)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
                 self.cells += [cell3]
                 self.cells += [cell4]
 
-
-
             elif i == 3 :
-                cell1 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier,
-                              None, self._filter_multiplier, self._filter_multiplier * 2,
-                              self._filter_multiplier)
+                cell1 = cell (B_d, FBD,
+                              None, FBD, FBD * 2,
+                              F, BatchNorm=BatchNorm)
 
-                cell2 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 2,
-                              self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2)
+                cell2 = cell (B_d, FBD * 2,
+                              FBD, FBD * 2, FBD * 4,
+                              F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4)
+                cell3 = cell (B_d, FBD * 4,
+                              FBD * 2, FBD * 4, FBD * 8,
+                              F * 4, BatchNorm=BatchNorm)
 
 
-                cell4 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 4,
-                              self._filter_multiplier * 4, self._filter_multiplier * 8, None,
-                              self._filter_multiplier * 8, pre_preprocess_sample_rate=0.5)
+                cell4 = cell (B_d, FBD * 4,
+                              FBD * 4, FBD * 8, None,
+                              F * 8, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.5)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -117,21 +111,21 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell4]
 
             elif i < distributed_layer :
-                cell1 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier,
-                                None, self._filter_multiplier, self._filter_multiplier * 2,
-                                self._filter_multiplier)
+                cell1 = cell (B_d, FBD,
+                              None, FBD, FBD * 2,
+                              F, BatchNorm=BatchNorm)
 
-                cell2 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 2,
-                              self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2)
+                cell2 = cell (B_d, FBD * 2,
+                              FBD, FBD * 2, FBD * 4,
+                              F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 4,
-                                self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
-                                self._filter_multiplier * 4)
+                cell3 = cell (B_d, FBD * 4,
+                              FBD * 2, FBD * 4, FBD * 8,
+                              F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 8,
-                                self._filter_multiplier * 4, self._filter_multiplier * 8, None,
-                                self._filter_multiplier * 8)
+                cell4 = cell (B_d, FBD * 8,
+                              FBD * 4, FBD * 8, None,
+                              F * 8, BatchNorm=BatchNorm)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -139,21 +133,21 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell4]
 
             elif i == distributed_layer:
-                cell1 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier,
-                              None, self._filter_multiplier, self._filter_multiplier * 2,
-                              self._filter_multiplier)
+                cell1 = cell (B_d, FBD,
+                              None, FBD, FBD * 2,
+                              F, BatchNorm=BatchNorm)
 
-                cell2 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 2,
-                              self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2)
+                cell2 = cell (B_d, FBD * 2,
+                              FBD, FBD * 2, FBD * 4,
+                              F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4)
+                cell3 = cell (B_d, FBD * 4,
+                              FBD * 2, FBD * 4, FBD * 8,
+                              F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (self._step_d, self._block_multiplier_d, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4, self._filter_multiplier * 8, None,
-                              self._filter_multiplier * 8)
+                cell4 = cell (B_d, FBD * 8,
+                              FBD * 4, FBD * 8, None,
+                              F * 8, BatchNorm=BatchNorm)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -161,21 +155,21 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell4]
 
             elif i == distributed_layer+1:
-                cell1 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier,
-                              None, self._filter_multiplier, self._filter_multiplier * 2,
-                              self._filter_multiplier, block_multiplier_d=self._block_multiplier_d, dist_prev_prev=True)
+                cell1 = cell (B_c, FBD,
+                              None, FBD, FBD * 2,
+                              F, BatchNorm=BatchNorm)
 
-                cell2 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 2,
-                              self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2, block_multiplier_d=self._block_multiplier_d, dist_prev_prev=True)
+                cell2 = cell (B_c, FBD * 2,
+                              FBD, FBD * 2, FBD * 4,
+                              F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4, block_multiplier_d=self._block_multiplier_d, dist_prev_prev=True)
+                cell3 = cell (B_c, FBD * 4,
+                              FBD * 2, FBD * 4, FBD * 8,
+                              F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4, self._filter_multiplier * 8, None,
-                              self._filter_multiplier * 8, block_multiplier_d=self._block_multiplier_d, dist_prev_prev=True)
+                cell4 = cell (B_c, FBD * 8,
+                              FBD * 4, FBD * 8, None,
+                              F * 8, BatchNorm=BatchNorm)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -183,21 +177,21 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell4]
 
             elif i == distributed_layer+2:
-                cell1 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier,
-                              None, self._filter_multiplier, self._filter_multiplier * 2,
-                              self._filter_multiplier, dist_prev_prev=True)
+                cell1 = cell (B_c, FBD,
+                              None, FBC, FBC * 2,
+                              F, BatchNorm=BatchNorm)
 
-                cell2 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 2,
-                              self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2, dist_prev_prev=True)
+                cell2 = cell (B_c, FBD * 2,
+                              FBC, FBC * 2, FBC * 4,
+                              F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4, dist_prev_prev=True)
+                cell3 = cell (B_c, FBD * 4,
+                              FBC * 2, FBC * 4, FBC * 8,
+                              F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 8,
-                              self._filter_multiplier * 4, self._filter_multiplier * 8, None,
-                              self._filter_multiplier * 8, dist_prev_prev=True)
+                cell4 = cell (B_c, FBD * 8,
+                              FBC * 4, FBC * 8, None,
+                              F * 8, BatchNorm=BatchNorm)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -205,58 +199,56 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell4]
 
             else :
-                cell1 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier,
-                                None, self._filter_multiplier, self._filter_multiplier * 2,
-                                self._filter_multiplier)
+                cell1 = cell (B_c, FBC,
+                              None, FBC, FBC * 2,
+                              F, BatchNorm=BatchNorm)
 
-                cell2 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 2,
-                              self._filter_multiplier, self._filter_multiplier * 2, self._filter_multiplier * 4,
-                              self._filter_multiplier * 2)
+                cell2 = cell (B_c, FBC * 2,
+                              FBC, FBC * 2, FBC * 4,
+                              F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 4,
-                                self._filter_multiplier * 2, self._filter_multiplier * 4, self._filter_multiplier * 8,
-                                self._filter_multiplier * 4)
+                cell3 = cell (B_c, FBC * 4,
+                              FBC * 2, FBC * 4, FBC * 8,
+                              F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (self._step_c, self._block_multiplier_c, self._filter_multiplier * 8,
-                                self._filter_multiplier * 4, self._filter_multiplier * 8, None,
-                                self._filter_multiplier * 8)
+                cell4 = cell (B_c, FBC * 8,
+                              FBC * 4, FBC * 8, None,
+                              F * 8, BatchNorm=BatchNorm)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
                 self.cells += [cell3]
                 self.cells += [cell4]
+
         self.aspp_device_4 = nn.Sequential (
-            ASPP (self._filter_multiplier * self._block_multiplier_d, self._num_classes, 24, 24) #96 / 4 as in the paper
+            ASPP (FBD, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
         )
         self.aspp_device_8 = nn.Sequential (
-            ASPP (self._filter_multiplier * 2 * self._block_multiplier_d, self._num_classes, 12, 12) #96 / 8
+            ASPP (FBD * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm) #96 / 8
         )
         self.aspp_device_16 = nn.Sequential (
-            ASPP (self._filter_multiplier * 4 * self._block_multiplier_d, self._num_classes, 6, 6) #96 / 16
+            ASPP (FBD * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) #96 / 16
         )
         self.aspp_device_32 = nn.Sequential (
-            ASPP (self._filter_multiplier * 8 * self._block_multiplier_d, self._num_classes, 3, 3) #96 / 32
+            ASPP (FBD * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm) #96 / 32
         )
 
 
         self.aspp_4 = nn.Sequential (
-            ASPP (self._filter_multiplier * self._block_multiplier_c, self._num_classes, 24, 24) #96 / 4 as in the paper
+            ASPP (FBC, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
         )
         self.aspp_8 = nn.Sequential (
-            ASPP (self._filter_multiplier * 2 * self._block_multiplier_c, self._num_classes, 12, 12) #96 / 8
+            ASPP (FBC * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm) #96 / 8
         )
         self.aspp_16 = nn.Sequential (
-            ASPP (self._filter_multiplier * 4 * self._block_multiplier_c, self._num_classes, 6, 6) #96 / 16
+            ASPP (FBC * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) #96 / 16
         )
         self.aspp_32 = nn.Sequential (
-            ASPP (self._filter_multiplier * 8 * self._block_multiplier_c, self._num_classes, 3, 3) #96 / 32
+            ASPP (FBC * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm) #96 / 32
         )
-
-
+        self._init_weight()
 
     def forward (self, x) :
-        #TODO: GET RID OF THESE LISTS, we dont need to keep everything.
-        #TODO: Is this the reason for the memory issue ?
         self.level_4 = []
         self.level_8 = []
         self.level_16 = []
@@ -586,8 +578,20 @@ class AutoDeeplab (nn.Module) :
         sum_device_feature_map = device_4_new + device_8_new + device_16_new + device_32_new
         sum_feature_map = aspp_result_4 + aspp_result_8 + aspp_result_16 + aspp_result_32
 
-
         return sum_device_feature_map, sum_feature_map
+
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, math.sqrt(2. / n))
+                torch.nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, SynchronizedBatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def _initialize_alphas_betas(self):
         k_d = sum(1 for i in range(self._step_d) for n in range(2+i))
@@ -610,38 +614,17 @@ class AutoDeeplab (nn.Module) :
 
         [self.register_parameter(name, torch.nn.Parameter(param)) for name, param in zip(self._arch_param_names, self._arch_parameters)]
 
-    def decode_viterbi(self):
-        decoder = Decoder(self.alphas_d, self.alphas_c, self.betas, 5)
-        return decoder.viterbi_decode()
-
-    def decode_dfs(self):
-        decoder = Decoder(self.alphas_d, self.alphas_c, self.betas, 5)
-        return decoder.dfs_decode()
-
     def arch_parameters (self) :
         return [param for name, param in self.named_parameters() if name in self._arch_param_names]
 
     def weight_parameters(self):
         return [param for name, param in self.named_parameters() if name not in self._arch_param_names]
 
-    def genotype(self):
-        decoder = Decoder(self.alphas_d, self.alphas_c, self.betas, self._step)
-        return decoder.genotype_decode()
-
-    def _loss (self, input, target) :
-        device_logits, cloud_logits = self (input)
-        return self._criterion (device_logits, target) + self._criterion(cloud_logits, target)
 
 
 def main () :
     model = AutoDeeplab (7, 12, None)
     x = torch.tensor (torch.ones (4, 3, 224, 224))
-    resultdfs = model.decode_dfs ()
-    resultviterbi = model.decode_viterbi()[0]
-
-
-    print (resultviterbi)
-    print (model.genotype())
 
 if __name__ == '__main__' :
     main ()

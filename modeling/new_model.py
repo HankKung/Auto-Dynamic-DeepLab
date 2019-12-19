@@ -210,11 +210,7 @@ class new_cloud_Model (nn.Module):
         B_d=4, sync_bn=False):
         super(new_cloud_Model, self).__init__()
 
-        if sync_bn == True:
-            BatchNorm = SynchronizedBatchNorm2d
-        else:
-            BatchNorm = nn.BatchNorm2d
-
+        BatchNorm = SynchronizedBatchNorm2d if sync_bn == True else nn.BatchNorm2d
         self.cells = nn.ModuleList()
         self.network_arch = network_arch[device_num_layers:]
         self.cell_arch_c = torch.from_numpy(cell_arch_c)

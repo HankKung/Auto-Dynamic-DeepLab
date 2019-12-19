@@ -6,17 +6,11 @@ import sys
 import torch
 from collections import OrderedDict
 from mypath import Path
-from dataloaders import make_data_loader
 from modeling.sync_batchnorm.replicate import patch_replication_callback
-from modeling.deeplab import *
-from utils.loss import SegmentationLosses
-from utils.calculate_weights import calculate_weigths_labels
-from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
-from auto_deeplab import AutoDeeplab
-from architect import Architect
+from modeling.model_search import AutoDeeplab
 from decoding_formulas import Decoder
 
 
@@ -30,15 +24,10 @@ class Loader(object):
                                  block_multiplier_c=args.block_multiplier, step_c=args.step)
         # Using cuda
         if args.cuda:
-#            if (torch.cuda.device_count() > 1 or args.load_parallel):
-#                self.model = torch.nn.DataParallel(self.model.cuda())
-#                patch_replication_callback(self.model)
+
             self.model = self.model.cuda()
             print('cuda finished')
-#        print(self.model.betas[-1])
         # Resuming checkpoint
-        self.best_pred = 0.0
-#        print(self.model.betas)
 
         if args.resume is not None:
             if not os.path.isfile(args.resume):

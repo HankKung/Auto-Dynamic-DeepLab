@@ -2,23 +2,22 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from operations import *
-from torch.autograd import Variable
-from genotypes import PRIMITIVES
-from genotypes import Genotype
+from modeling.operations import *
+from modeling.genotypes import PRIMITIVES
+from modeling.genotypes import Genotype
 
 
 class MixedOp (nn.Module):
 
-    def __init__(self, C, stride):
+    def __init__(self, C, stride, BatchNorm):
         super(MixedOp, self).__init__()
         eps=1e-5
         momentum=0.1
         self._ops = nn.ModuleList()
         for primitive in PRIMITIVES:
-            op = OPS[primitive](C, stride, eps, momentum, False)
+            op = OPS[primitive](C, stride, BatchNorm, eps, momentum, False)
             if 'pool' in primitive:
-                op = nn.Sequential(op, nn.BatchNorm2d(C, eps=eps, momentum=momentum, affine=False))
+                op = nn.Sequential(op, BatchNorm(C, eps=eps, momentum=momentum, affine=False))
             self._ops.append(op)
 
     def forward(self, x, weights):
@@ -27,77 +26,44 @@ class MixedOp (nn.Module):
 
 class Cell(nn.Module):
 
-    def __init__(self, steps, block_multiplier, prev_prev_fmultiplier,
-                 prev_fmultiplier_down, prev_fmultiplier_same, prev_fmultiplier_up,
-                 filter_multiplier, block_multiplier_d=0, dist_prev_prev=False \
-                 , pre_preprocess_sample_rate=1):
+    def __init__(self, B, prev_prev_C,
+                 prev_C_down, prev_C_same, prev_C_up,
+                 C_out, BatchNorm=nn.BatchNorm2d, pre_preprocess_sample_rate=1):
 
         super(Cell, self).__init__()
 
-        self.C_in = block_multiplier * filter_multiplier
-        self.C_out = filter_multiplier
+        if prev_C_down is not None:  
+            self.preprocess_down = FactorizedReduce(
+                prev_C_down, C_out, BatchNorm=BatchNorm, affine=False)
+        if prev_C_same is not None:
+            self.preprocess_same = ReLUConvBN(
+                prev_C_same, C_out, 1, 1, 0, BatchNorm=BatchNorm, affine=False)
+        if prev_C_up is not None:
+            self.preprocess_up = ReLUConvBN(
+                prev_C_up, C_out, 1, 1, 0, BatchNorm=BatchNorm, affine=False)
 
-        self.C_prev_prev = int(prev_prev_fmultiplier * block_multiplier)
-        self._prev_fmultiplier_same = prev_fmultiplier_same
-
-        if prev_fmultiplier_down is not None:
-            if block_multiplier_d != 0:
-                dist_C_prev_down = int(prev_fmultiplier_down * block_multiplier_d)
-                self.preprocess_down = FactorizedReduce(
-                    dist_C_prev_down, self.C_out, affine=False)
-            else:    
-                self.C_prev_down = int(prev_fmultiplier_down * block_multiplier)
-                self.preprocess_down = FactorizedReduce(
-                    self.C_prev_down, self.C_out, affine=False)
-        if prev_fmultiplier_same is not None:
-            if block_multiplier_d != 0:
-                dist_C_prev_same = int(prev_fmultiplier_same * block_multiplier_d)
-                self.preprocess_same = ReLUConvBN(
-                    dist_C_prev_same, self.C_out, 1, 1, 0, affine=False)
-            else:
-                self.C_prev_same = int(prev_fmultiplier_same * block_multiplier)
-                self.preprocess_same = ReLUConvBN(
-                    self.C_prev_same, self.C_out, 1, 1, 0, affine=False)
-        if prev_fmultiplier_up is not None:
-            if block_multiplier_d !=0:
-                dist_C_prev_up = int(prev_fmultiplier_up * block_multiplier_d)
-                self.preprocess_up = ReLUConvBN(
-                    dist_C_prev_up, self.C_out, 1, 1, 0, affine=False)
-            else:
-                self.C_prev_up = int(prev_fmultiplier_up * block_multiplier)
-                self.preprocess_up = ReLUConvBN(
-                    self.C_prev_up, self.C_out, 1, 1, 0, affine=False)
-
-        if prev_prev_fmultiplier != -1:
-            if dist_prev_prev:
-                self.C_prev_prev = int(prev_prev_fmultiplier * 4)
-
+        if prev_prev_C != -1:
             if pre_preprocess_sample_rate >= 1:
                 self.pre_preprocess = ReLUConvBN(
-                    self.C_prev_prev, self.C_out, 1, 1, 0, affine=False)
+                    prev_prev_C, C_out, 1, 1, 0, BatchNorm=BatchNorm, affine=False)
             elif pre_preprocess_sample_rate == 0.5:
                 self.pre_preprocess = FactorizedReduce(
-                self.C_prev_prev, self.C_out, affine=False)
+                    prev_prev_C, C_out, BatchNorm=BatchNorm, affine=False)
             elif pre_preprocess_sample_rate == 0.25:
                 self.pre_preprocess = DoubleFactorizedReduce(
-                self.C_prev_prev, self.C_out, affine=False)
+                    prev_prev_C, C_out, BatchNorm=BatchNorm, affine=False)
 
-
-
-        self._steps = steps
-        self.block_multiplier = block_multiplier
+        self.B = B
         self._ops = nn.ModuleList()
 
-        for i in range(self._steps):
+        for i in range(self.B):
             for j in range(2+i):
                 stride = 1
-                if prev_prev_fmultiplier == -1 and j == 0:
+                if prev_prev_C == -1 and j == 0:
                     op = None
                 else:
-                    op = MixedOp(self.C_out, stride)
+                    op = MixedOp(C_out, stride, BatchNorm)
                 self._ops.append(op)
-
-        #self.ReLUConvBN = ReLUConvBN(self.C_in, self.C_out, 1, 1, 0)
 
     def scale_dimension(self, dim, scale):
         assert isinstance(dim, int)
@@ -125,9 +91,9 @@ class Cell(nn.Module):
             s1_up = self.prev_feature_resize(s1_up, 'up')
             s1_up = self.preprocess_up(s1_up)
             size_h, size_w = s1_up.shape[2], s1_up.shape[3]
+
         all_states = []
         if s0 is not None:
-            # s0 = self.pre_preprocess(s0)
             s0 = F.interpolate(s0, (size_h, size_w), mode='bilinear') if (
                 s0.shape[2] < size_h) or (s0.shape[3] < size_w) else s0
             s0 = self.pre_preprocess(s0)
@@ -154,7 +120,7 @@ class Cell(nn.Module):
         final_concates = []
         for states in all_states:
             offset = 0
-            for i in range(self._steps):
+            for i in range(self.B):
                 new_states = []
                 for j, h in enumerate(states):
                     branch_index = offset + j
@@ -168,6 +134,6 @@ class Cell(nn.Module):
                 offset += len(states)
                 states.append(s)
 
-            concat_feature = torch.cat(states[-self.block_multiplier:], dim=1)
+            concat_feature = torch.cat(states[-self.B:], dim=1)
             final_concates.append(concat_feature)
         return final_concates

@@ -116,22 +116,22 @@ class DoubleFactorizedReduce(nn.Module):
     return out
 
 class ASPP(nn.Module):
-    def __init__(self, in_channels, out_channels, paddings, dilations, momentum=0.0003):
+    def __init__(self, in_channels, out_channels, paddings, dilations, BatchNorm=nn.BatchNorm2d, momentum=0.0003):
 
         super(ASPP, self).__init__()
         self.conv11 = nn.Sequential(nn.Conv2d(in_channels, in_channels, 1, bias=False, ),
-                                    nn.BatchNorm2d(in_channels),
+                                    BatchNorm(in_channels),
                                     nn.ReLU(inplace=True))
         self.conv33 = nn.Sequential(nn.Conv2d(in_channels, in_channels, 3,
                                     padding=paddings, dilation=dilations, bias=False, ),
-                                    nn.BatchNorm2d(in_channels),
+                                    BatchNorm(in_channels),
                                     nn.ReLU(inplace=True))
         self.conv_p = nn.Sequential(nn.Conv2d(in_channels, in_channels, 1, bias=False, ),
-                                    nn.BatchNorm2d(in_channels),
+                                    BatchNorm(in_channels),
                                     nn.ReLU(inplace=True))
 
         self.concate_conv = nn.Sequential(nn.Conv2d(in_channels * 3, in_channels, 1, bias=False,  stride=1, padding=0),
-                                          nn.BatchNorm2d(in_channels),
+                                          BatchNorm(in_channels),
                                           nn.ReLU(inplace=True))
         self.final_conv = nn.Conv2d(in_channels, out_channels, 1, bias=False,  stride=1, padding=0)
 
