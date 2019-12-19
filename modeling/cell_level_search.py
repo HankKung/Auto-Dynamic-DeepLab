@@ -100,12 +100,15 @@ class Cell(nn.Module):
             if s1_down is not None:
                 states_down = [s0, s1_down]
                 all_states.append(states_down)
+                del s1_down
             if s1_same is not None:
                 states_same = [s0, s1_same]
                 all_states.append(states_same)
+                del s1_same
             if s1_up is not None:
                 states_up = [s0, s1_up]
                 all_states.append(states_up)
+                del s1_up
         else:
             if s1_down is not None:
                 states_down = [0, s1_down]

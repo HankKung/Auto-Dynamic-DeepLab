@@ -169,7 +169,7 @@ class Trainer(object):
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
-                image, target = image.cuda(), target.cuda()
+                image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             device_output, cloud_output = self.model(image)

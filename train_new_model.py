@@ -12,7 +12,7 @@ from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
-from new_model import *
+from modeling.new_model import *
 from torchviz import make_dot, make_dot_from_trace
 
 APEX_AVAILABLE = False
@@ -32,7 +32,7 @@ class trainNew(object):
         self.opt_level = args.opt_level
 
         # Define Dataloader
-        kwargs = {'num_workers': args.workers, 'pin_memory': True}
+        kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
         cell_path_d = os.path.join(args.saved_arch_path, 'genotype_device.npy')
@@ -155,7 +155,7 @@ class trainNew(object):
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
-                image, target = image.cuda(), target.cuda()
+                image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             device_output, cloud_output = self.model(image)
@@ -351,29 +351,8 @@ def main():
         else:
             args.sync_bn = False
 
-    # default settings for epochs, batch_size and lr
-    if args.epochs is None:
-        epoches = {
-            'coco': 30,
-            'cityscapes': 4500,
-            'pascal': 50,
-        }
-        args.epochs = epoches[args.dataset.lower()]
-
-    if args.batch_size is None:
-        args.batch_size = 4 * len(args.gpu_ids)
-
     if args.test_batch_size is None:
         args.test_batch_size = 1
-
-    if args.lr is None:
-        lrs = {
-            'coco': 0.1,
-            'cityscapes': 0.05,
-            'pascal': 0.05,
-        }
-        args.lr = lrs[args.dataset.lower()] / (4 * len(args.gpu_ids)) * args.batch_size
-
 
     if args.checkname is None:
         args.checkname = 'deeplab-'+str(args.backbone)
@@ -385,7 +364,7 @@ def main():
     print('Total Epoches:', new_trainer.args.epochs)
     for epoch in range(new_trainer.args.start_epoch, new_trainer.args.epochs):
         new_trainer.training(epoch)
-        if not new_trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1) or epoch > int(0.97*new_trainer.args.epochs):
+        if not new_trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1) or epoch > new_trainer.args.epochs - 50:
             new_trainer.validation(epoch)
 
     new_trainer.writer.close()

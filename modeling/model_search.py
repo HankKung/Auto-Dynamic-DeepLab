@@ -319,6 +319,7 @@ class AutoDeeplab (nn.Module) :
                 
                 self.level_4.append (level4_new)
                 self.level_8.append (level8_new)
+                del temp
 
             elif layer == 1 :
                 level4_new_1, level4_new_2 = self.cells[count] (self.level_4[-2],
@@ -561,9 +562,13 @@ class AutoDeeplab (nn.Module) :
             self.level_32 = self.level_32[-2:]
 
         aspp_result_4 = self.aspp_4 (self.level_4[-1])
+        del self.level_4
         aspp_result_8 = self.aspp_8 (self.level_8[-1])
+        del self.level_8
         aspp_result_16 = self.aspp_16 (self.level_16[-1])
+        del self.level_16
         aspp_result_32 = self.aspp_32 (self.level_32[-1])
+        del self.level_32
         upsample = nn.Upsample(size=x.size()[2:], mode='bilinear', align_corners=True)
         aspp_result_4 = upsample (aspp_result_4)
         aspp_result_8 = upsample (aspp_result_8)
