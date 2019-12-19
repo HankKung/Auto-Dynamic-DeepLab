@@ -8,14 +8,13 @@ from collections import OrderedDict
 from mypath import Path
 from dataloaders import make_data_loader
 from modeling.sync_batchnorm.replicate import patch_replication_callback
-from modeling.deeplab import *
 from utils.loss import SegmentationLosses
 from utils.calculate_weights import calculate_weigths_labels
 from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
-from auto_deeplab import AutoDeeplab
+from modeling.model_search import AutoDeeplab
 import apex
 try:
     from apex import amp
@@ -60,8 +59,8 @@ class Trainer(object):
         self.criterion = SegmentationLosses(weight=weight, search=True, cuda=args.cuda).build_loss(mode=args.loss_type)
 
         # Define network
-        model = AutoDeeplab (num_classes=self.nclass, num_layers=12, criterion=self.criterion, filter_multiplier=self.args.filter_multiplier,
-                             block_multiplier_c=self.args.block_multiplier, step_c=self.args.step, distributed_layer=5)
+        model = AutoDeeplab (num_classes=self.nclass, num_layers=12, F=self.args.filter_multiplier,
+                             B_c=self.args.block_multiplier, distributed_layer=5, sync_bn=args.sync_bn)
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
                 args.lr,
@@ -85,7 +84,6 @@ class Trainer(object):
         # Using cuda
         if args.cuda:
             self.model = self.model.cuda()
-
 
         # mixed precision
         if self.use_amp and args.cuda:
@@ -181,7 +179,6 @@ class Trainer(object):
 
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-#                    print(scaled_loss)
                     scaled_loss.backward()
             else:
                 loss.backward()
@@ -210,14 +207,7 @@ class Trainer(object):
 
             train_loss += loss.item()
             tbar.set_description('Train loss: %.3f-------Search loss: %.3f' % (train_loss / (i + 1), search_loss / (i+1)))
-            #self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
 
-            # Show 10 * 3 inference results each epoch
-            #if i % (num_img_tr // 10) == 0:
-             #   global_step = i + num_img_tr * epoch
-              #  self.summary.visualize_image(self.writer, self.args.dataset, image, target, cloud_output, global_step)
-
-            #torch.cuda.empty_cache()
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
@@ -392,8 +382,6 @@ def main():
     parser.add_argument('--no-val', action='store_true', default=False,
                         help='skip validation during training')
     # Robust DARTS method
-    parser.add_argument('--window', type=int, default=5, help='window size of the local average')
-    parser.add_argument('--report_freq_hessian',     type=float,          default=50,             help='report frequency hessian')
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
