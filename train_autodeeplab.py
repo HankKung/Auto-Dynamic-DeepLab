@@ -111,13 +111,13 @@ class Trainer(object):
             print('cuda finished')
 
 
-        # Using data parallel
-#        if args.cuda and len(self.args.gpu_ids) >1:
-#            if self.opt_level == 'O2' or self.opt_level == 'O3':
-#                print('currently cannot run with nn.DataParallel and optimization level', self.opt_level)
-#            self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
-#            patch_replication_callback(self.model)
-#            print('training on multiple-GPUs')
+       #Using data parallel
+        if args.cuda and len(self.args.gpu_ids) >1:
+            if self.opt_level == 'O2' or self.opt_level == 'O3':
+                print('currently cannot run with nn.DataParallel and optimization level', self.opt_level)
+            self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
+            patch_replication_callback(self.model)
+            print('training on multiple-GPUs')
 
         #checkpoint = torch.load(args.resume)
         #print('about to load state_dict')

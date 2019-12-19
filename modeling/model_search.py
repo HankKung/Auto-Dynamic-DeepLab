@@ -49,12 +49,12 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell1]
                 self.cells += [cell2]
             elif i == 1 :
-                cell1 = cell (B_d,, f_initial,
-                              None, F, F * 2,
+                cell1 = cell (B_d, f_initial,
+                              None, FBD, FBD * 2,
                               F, BatchNorm=BatchNorm)
 
                 cell2 = cell (B_d, f_initial,
-                              F, F * 2, None,
+                              FBD, FBD * 2, None,
                               F * 2, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.5)
 
                 cell3 = cell (B_d, f_initial,

@@ -65,6 +65,7 @@ class Cell(nn.Module):
      
         s1 = self.preprocess(s1)
         s0 = prev_prev_input
+        del prev_prev_input
         s0 = F.interpolate(s0, \
             (self.scale_dimension(s0.shape[2], self.pre_pre_scale), \
             self.scale_dimension(s0.shape[3], self.pre_pre_scale)), \
@@ -81,9 +82,6 @@ class Cell(nn.Module):
             for j, h in enumerate(states):
                 branch_index = offset + j
                 if branch_index in self.cell_arch[:, 0]:
-                    if prev_prev_input is None and j == 0:
-                        ops_index += 1
-                        continue
                     new_state = self._ops[ops_index](h)
                     new_states.append(new_state)
                     ops_index += 1
@@ -183,9 +181,14 @@ class new_device_Model (nn.Module):
         for i in range(self._num_layers):       
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
-            if i == 1:
+            if i == 0:
+                del stem
+            elif i == 1:
                 low_level = two_last_inputs[1]
                 low_level = self.low_level_conv(low_level)
+                del stem0
+            elif i==2:
+                del stem1
    
         last_output = two_last_inputs[-1]
         aspp_result = self.aspp_device(last_output)
@@ -278,11 +281,13 @@ class new_cloud_Model (nn.Module):
                 two_last_inputs[0], two_last_inputs[1])
             
         last_output = two_last_inputs[-1]
+        del two_last_inputs
 
         device_output = F.interpolate(device_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
         device_output = self.device.decoder(device_output, low_level, size)
 
         cloud_output = self.aspp_cloud(last_output)
+        del last_output
         cloud_output = F.interpolate(cloud_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
         cloud_output = self.decoder(cloud_output, low_level, size)         
 
@@ -377,6 +382,12 @@ class ASPP_train(nn.Module):
         x5 = nn.Upsample((x.shape[2], x.shape[3]), mode='bilinear',
                          align_corners=True)(x5)
         x = torch.cat((x1, x2, x3, x4, x5), 1)
+        del x1
+        del x2
+        del x3
+        del x4
+        del x5
+
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
