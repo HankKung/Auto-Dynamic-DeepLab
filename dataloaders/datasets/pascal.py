@@ -72,7 +72,7 @@ class VOCSegmentation(Dataset):
     def transform_tr(self, sample):
         composed_transforms = transforms.Compose([
             tr.RandomHorizontalFlip(),
-            tr.RandomScaleCrop(base_size=513, crop_size=513, fill=255),
+            tr.RandomScaleCrop(base_size=512, crop_size=513, fill=255),
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             tr.ToTensor()])
 
