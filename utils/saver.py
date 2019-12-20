@@ -47,7 +47,6 @@ class Saver(object):
         p = OrderedDict()
         p['datset'] = self.args.dataset
         p['backbone'] = self.args.backbone
-        p['out_stride'] = self.args.out_stride
         p['lr'] = self.args.lr
         p['lr_scheduler'] = self.args.lr_scheduler
         p['loss_type'] = self.args.loss_type

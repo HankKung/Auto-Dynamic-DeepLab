@@ -2,7 +2,6 @@ import argparse
 import os
 import numpy as np
 from tqdm import tqdm
-
 from mypath import Path
 from dataloaders import make_data_loader
 from modeling.sync_batchnorm.replicate import patch_replication_callback
@@ -162,7 +161,7 @@ class trainNew(object):
             
             device_loss = self.criterion(device_output, target)
             cloud_loss = self.criterion(cloud_output, target)
-            loss = device_loss + cloud_loss* 1.5
+            loss = device_loss + cloud_loss
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
@@ -260,13 +259,9 @@ def main():
     parser.add_argument('--opt_level', type=str, default='O0',
                         choices=['O0', 'O1', 'O2', 'O3'],
                         help='opt level for half percision training (default: O0)')
-    parser.add_argument('--out-stride', type=int, default=16,
-                        help='network output stride (default: 8)')
     parser.add_argument('--dataset', type=str, default='cityscapes',
                         choices=['pascal', 'coco', 'cityscapes'],
                         help='dataset name (default: pascal)')
-    parser.add_argument('--use-sbd', action='store_true', default=True,
-                        help='whether to use SBD dataset (default: True)')
     parser.add_argument('--workers', type=int, default=4,
                         metavar='N', help='dataloader threads')
     parser.add_argument('--crop_size', type=int, default=320,
@@ -329,12 +324,9 @@ def main():
     # evaluation option
     parser.add_argument('--eval-interval', type=int, default=100,
                         help='evaluuation interval (default: 1)')
-    parser.add_argument('--no-val', action='store_true', default=False,
-                        help='skip validation during training')
     parser.add_argument('--filter_multiplier', type=int, default=20)
     parser.add_argument('--autodeeplab', type=str, default='train',
                         choices=['search', 'train'])
-    parser.add_argument('--load-parallel', type=int, default=0)
     parser.add_argument('--min_lr', type=float, default=0.000001) #TODO: CHECK THAT THEY EVEN DO THIS FOR THE MODEL IN THE PAPER
 
     args = parser.parse_args()
@@ -364,9 +356,8 @@ def main():
     print('Total Epoches:', new_trainer.args.epochs)
     for epoch in range(new_trainer.args.start_epoch, new_trainer.args.epochs):
         new_trainer.training(epoch)
-        if not new_trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1) or epoch > new_trainer.args.epochs - 50:
+        if epoch==0 or epoch % args.eval_interval == (args.eval_interval - 1) or epoch > new_trainer.args.epochs - 50
             new_trainer.validation(epoch)
-
     new_trainer.writer.close()
 
 if __name__ == "__main__":
