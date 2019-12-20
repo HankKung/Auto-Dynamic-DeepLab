@@ -161,7 +161,7 @@ class trainNew(object):
             
             device_loss = self.criterion(device_output, target)
             cloud_loss = self.criterion(cloud_output, target)
-            loss = device_loss + cloud_loss
+            loss = (device_loss + cloud_loss)/2
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
