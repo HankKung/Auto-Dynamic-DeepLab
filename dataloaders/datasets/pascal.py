@@ -79,12 +79,8 @@ class VOCSegmentation(Dataset):
         return composed_transforms(sample)
 
     def transform_val(self, sample):
-        composed_transforms = transforms.Compose([
-            tr.Crop_for_eval(),
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            tr.ToTensor()])
-
-        return composed_transforms(sample)
+        transform = tr.pascal_eval_preprocess(513)
+        return transform(sample)
 
     def __str__(self):
         return 'VOC2012(split=' + str(self.split) + ')'

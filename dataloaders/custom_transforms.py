@@ -247,3 +247,33 @@ class Crop_for_eval(object):
 
         return {'image': img,
                 'label': mask}
+class pascal_eval_preprocess(object):
+    def __init__(self, crop_size):
+        self.crop_size = crop_size
+    def __call__(self, sample):
+
+        image = sample['image']
+        mask = sample['label']
+
+        data_transforms = transforms.Compose([
+          transforms.ToTensor(),
+          transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+
+        image = data_transforms(image)
+        mask = torch.LongTensor(np.array(mask).astype(np.int64))
+
+        h, w = image.shape[1], image.shape[2]
+        pad_tb = max(0, self.crop_size - h)
+        pad_lr = max(0, self.crop_size - w)
+        image = torch.nn.ZeroPad2d((0, pad_lr, 0, pad_tb))(image)
+        mask = torch.nn.ConstantPad2d((0, pad_lr, 0, pad_tb), 255)(mask)
+
+        h, w = image.shape[1], image.shape[2]
+        i = random.randint(0, h - self.crop_size)
+        j = random.randint(0, w - self.crop_size)
+        image = image[:, i:i + self.crop_size, j:j + self.crop_size]
+        mask = mask[i:i + self.crop_size, j:j + self.crop_size]
+
+        return {'image': image,
+                'label': mask}
