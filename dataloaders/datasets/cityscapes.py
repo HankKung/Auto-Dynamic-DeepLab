@@ -102,13 +102,13 @@ class CityscapesSegmentation(data.Dataset):
                 tr.RandomHorizontalFlip(),
                 tr.FixedResize_Search(resize=self.args.resize),
                 tr.RandomCrop(crop_size=self.args.crop_size),
-                tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                tr.Normalize(mean=(0.29866842 0.30135223 0.30561872), std=(0.23925215 0.23859318 0.2385942)),
                 tr.ToTensor()])
         else:
             composed_transforms = transforms.Compose([
                 tr.RandomHorizontalFlip(),
                 tr.RandomScaleCrop(base_size=self.args.resize, crop_size=self.args.crop_size, fill=255),
-                tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                tr.Normalize(mean=(0.29866842 0.30135223 0.30561872), std=(0.23925215 0.23859318 0.2385942)),
                 tr.ToTensor()])
 
         return composed_transforms(sample)
@@ -117,13 +117,13 @@ class CityscapesSegmentation(data.Dataset):
         if self.search:
             composed_transforms = transforms.Compose([
               tr.FixedResize_Search(resize=513),
-              tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+              tr.Normalize(mean=(0.29866842 0.30135223 0.30561872), std=(0.23925215 0.23859318 0.2385942)),
               tr.ToTensor()])
        
         else:
             composed_transforms = transforms.Compose([
               tr.Crop_for_eval(),
-              tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+              tr.Normalize(mean=(0.29866842 0.30135223 0.30561872), std=(0.23925215 0.23859318 0.2385942)),
               tr.ToTensor()])
 
         return composed_transforms(sample)
@@ -132,7 +132,7 @@ class CityscapesSegmentation(data.Dataset):
 
         composed_transforms = transforms.Compose([
             tr.FixedResize(size=self.args.crop_size),
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            tr.Normalize(mean=(0.29866842 0.30135223 0.30561872), std=(0.23925215 0.23859318 0.2385942)),
             tr.ToTensor()])
 
         return composed_transforms(sample)
