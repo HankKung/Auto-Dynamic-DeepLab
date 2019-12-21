@@ -119,12 +119,6 @@ class Trainer(object):
             patch_replication_callback(self.model)
             print('training on multiple-GPUs')
 
-        #checkpoint = torch.load(args.resume)
-        #print('about to load state_dict')
-        #self.model.load_state_dict(checkpoint['state_dict'])
-        #print('model loaded')
-        #sys.exit()
-
         # Resuming checkpoint
         self.best_pred = 0.0
         if args.resume is not None:
@@ -156,10 +150,6 @@ class Trainer(object):
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
 
-        # Clear start epoch if fine-tuning
-        if args.ft:
-            args.start_epoch = 0
-
     def training(self, epoch):
         train_loss = 0.0
         search_loss = 0.0
@@ -175,7 +165,7 @@ class Trainer(object):
             device_output, cloud_output = self.model(image)
             loss_device = self.criterion(device_output, target)
             loss_cloud = self.criterion(cloud_output, target)
-            loss = loss_device + loss_cloud
+            loss = (loss_device + loss_cloud)/2
 
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -212,21 +202,6 @@ class Trainer(object):
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
 
-        if self.args.no_val:
-            # save checkpoint every epoch
-            is_best = False
-            if torch.cuda.device_count() > 1:
-                state_dict = self.model.module.state_dict()
-            else:
-                state_dict = self.model.state_dict()
-            self.saver.save_checkpoint({
-                'epoch': epoch + 1,
-                'state_dict': state_dict,
-                'optimizer': self.optimizer.state_dict(),
-                'best_pred': self.best_pred,
-            }, is_best)
-
-
     def validation(self, epoch):
         self.model.eval()
         self.evaluator.reset()
@@ -255,21 +230,15 @@ class Trainer(object):
             self.evaluator.add_batch(target, device_pred)
             self.evaluator_cloud.add_batch(target, cloud_pred)
 
-        # Fast test during the training
-        # Acc = self.evaluator.Pixel_Accuracy()
-        # Acc_class = self.evaluator.Pixel_Accuracy_Class()
         mIoU = self.evaluator.Mean_Intersection_over_Union()
         mIoU_cloud = self.evaluator_cloud.Mean_Intersection_over_Union()
         # FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
         self.writer.add_scalar('val/device/mIoU', mIoU, epoch)
         self.writer.add_scalar('val/cloud/mIoU', mIoU_cloud, epoch)
-        # self.writer.add_scalar('val/Acc', Acc, epoch)
-        # self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
-        # self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
+
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
-        # print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
         print('Loss: %.3f' % test_loss)
         new_pred = (mIoU + mIoU_cloud)/2
         if new_pred > self.best_pred:
@@ -373,15 +342,11 @@ def main():
                         help='put the path to resuming file if needed')
     parser.add_argument('--checkname', type=str, default=None,
                         help='set the checkpoint name')
-    # finetuning pre-trained models
-    parser.add_argument('--ft', action='store_true', default=False,
-                        help='finetuning on a different dataset')
     # evaluation option
     parser.add_argument('--eval-interval', type=int, default=1,
                         help='evaluuation interval (default: 1)')
     parser.add_argument('--no-val', action='store_true', default=False,
                         help='skip validation during training')
-    # Robust DARTS method
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -396,19 +361,6 @@ def main():
             args.sync_bn = True
         else:
             args.sync_bn = False
-
-    # default settings for epochs, batch_size and lr
-    if args.epochs is None:
-        epoches = {
-            'coco': 30,
-            'cityscapes': 40,
-            'pascal': 50,
-            'kd':10
-        }
-        args.epochs = epoches[args.dataset.lower()]
-
-    if args.batch_size is None:
-        args.batch_size = 4 * len(args.gpu_ids)
 
     if args.test_batch_size is None:
         args.test_batch_size = 1
