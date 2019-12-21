@@ -223,7 +223,7 @@ class trainNew(object):
         self.writer.add_scalar('val/cloud/mIoU', mIoU_c, epoch)
 
         print('Validation:')
-        print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
+        print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.test_batch_size + image.data.shape[0]))
         print("device_mIoU:{}, cloud_mIoU: {}".format(mIoU_d, mIoU_c))
         print('Loss: %.3f' % test_loss)
 

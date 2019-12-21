@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 import numpy as np
 from modeling.operations import *
+import time
 
 class Cell(nn.Module):
 
@@ -273,31 +274,53 @@ class new_cloud_Model (nn.Module):
                                      256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
 
-    def forward(self, x):
+    def forward(self, x, evaluation=False):
         size = (x.shape[2], x.shape[3])
-        low_level, two_last_inputs, device_output = self.device(x)
-        for i in range(self._num_layers):
-            two_last_inputs = self.cells[i](
-                two_last_inputs[0], two_last_inputs[1])
-            
-        last_output = two_last_inputs[-1]
-        del two_last_inputs
+        if not evaluation:
+            low_level, two_last_inputs, device_output = self.device(x)
+            for i in range(self._num_layers):
+                two_last_inputs = self.cells[i](
+                    two_last_inputs[0], two_last_inputs[1])
+                
+            last_output = two_last_inputs[-1]
+            del two_last_inputs
 
-        device_output = F.interpolate(device_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-        device_output = self.device.decoder(device_output, low_level, size)
+            device_output = F.interpolate(device_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            device_output = self.device.decoder(device_output, low_level, size)
 
-        cloud_output = self.aspp_cloud(last_output)
-        del last_output
-        cloud_output = F.interpolate(cloud_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-        cloud_output = self.decoder(cloud_output, low_level, size)         
+            cloud_output = self.aspp_cloud(last_output)
+            del last_output
+            cloud_output = F.interpolate(cloud_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            cloud_output = self.decoder(cloud_output, low_level, size)         
 
-        return device_output, cloud_output
+            return device_output, cloud_output
+
+        else:
+            torch.cuda.synchronize()
+            tic = time.perf_counter()
+
+            low_level, two_last_inputs, device_output = self.device(x)
+            device_output = F.interpolate(device_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            device_output = self.device.decoder(device_output, low_level, size)
+
+            torch.cuda.synchronize()
+            tic_1 = time.perf_counter()
+
+            for i in range(self._num_layers):
+                two_last_inputs = self.cells[i](
+                    two_last_inputs[0], two_last_inputs[1])
+            cloud_output = self.aspp_cloud(last_output)
+            cloud_output = F.interpolate(cloud_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            cloud_output = self.decoder(cloud_output, low_level, size)
+
+            torch.cuda.synchronize()
+            tic_2 = time.perf_counter()
+
+            return device_output, cloud_output, tic_1 - tic, tic_2 - tic
 
     def _init_weight(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt(2. / n))
                 torch.nn.init.kaiming_normal_(m.weight)
             elif isinstance(m, SynchronizedBatchNorm2d):
                 m.weight.data.fill_(1)
@@ -361,7 +384,6 @@ class ASPP_train(nn.Module):
         self.bn1 = BatchNorm(depth)
         self._init_weight()
 
-
     def forward(self, x):
         x1 = self.aspp1(x)
         x1 = self.aspp1_bn(x1)
@@ -397,8 +419,6 @@ class ASPP_train(nn.Module):
     def _init_weight(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt(2. / n))
                 torch.nn.init.kaiming_normal_(m.weight)
             elif isinstance(m, SynchronizedBatchNorm2d):
                 m.weight.data.fill_(1)
@@ -441,52 +461,3 @@ class Decoder(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
-
-def network_layer_to_space(net_arch):
-    for i, layer in enumerate(net_arch):
-        if i == 0:
-            space = np.zeros((1, 4, 3))
-            space[0][layer][0] = 1
-            prev = layer
-        else:
-            if layer == prev + 1:
-                sample = 0
-            elif layer == prev:
-                sample = 1
-            elif layer == prev - 1:
-                sample = 2
-            space1 = np.zeros((1, 4, 3))
-            space1[0][layer][sample] = 1
-            space = np.concatenate([space, space1], axis=0)
-            prev = layer
-    return space
-
-
-def get_cell():
-    cell = np.zeros((10, 2))
-    cell[0] = [0, 7]
-    cell[1] = [1, 4]
-    cell[2] = [2, 4]
-    cell[3] = [3, 6]
-    cell[4] = [5, 4]
-    cell[5] = [8, 4]
-    cell[6] = [11, 5]
-    cell[7] = [13, 5]
-    cell[8] = [19, 7]
-    cell[9] = [18, 5]
-    return cell.astype('uint8'), cell.astype('uint8')
-
-
-def get_arch():
-
-    backbone = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
-    network_arch = network_layer_to_space(backbone)
-    cell_arch, cell_arch2 = get_cell()
-
-    return network_arch, cell_arch, cell_arch2
-
-
-def get_default_net(filter_multiplier=8):
-    net_arch, cell_arch, cell_arch2 = get_arch()
-    return new_cloud_Model(net_arch, cell_arch, cell_arch2, 19, 6, filter_multiplier=filter_multiplier)
- 
