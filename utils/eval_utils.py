@@ -2,54 +2,37 @@ import math
 import random
 import numpy as np
 import torch
-import torchvision.transforms as transforms
-from PIL import Image
-
 
 class AverageMeter(object):
-  def __init__(self):
-    self.val = None
-    self.sum = None
-    self.cnt = None
-    self.avg = None
-    self.ema = None
-    self.initialized = False
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.initialized = False
+        self.val = None
+        self.avg = None
+        self.sum = None
+        self.count = None
 
-  def update(self, val, n=1):
-    if not self.initialized:
-      self.initialize(val, n)
-    else:
-      self.add(val, n)
+    def initialize(self, val, weight):
+        self.val = val
+        self.avg = val
+        self.sum = val * weight
+        self.count = weight
+        self.initialized = True
 
-  def initialize(self, val, n):
-    self.val = val
-    self.sum = val * n
-    self.cnt = n
-    self.avg = val
-    self.ema = val
-    self.initialized = True
+    def update(self, val, weight=1):
+        if not self.initialized:
+            self.initialize(val, weight)
+        else:
+            self.add(val, weight)
 
-  def add(self, val, n):
-    self.val = val
-    self.sum += val * n
-    self.cnt += n
-    self.avg = self.sum / self.cnt
-    self.ema = self.ema * 0.99 + self.val * 0.01
+    def add(self, val, weight):
+        self.val = val
+        self.sum += val * weight
+        self.count += weight
+        self.avg = self.sum / self.count
 
+    def value(self):
+        return self.val
 
-def inter_and_union(pred, mask, num_class):
-  pred = np.asarray(pred, dtype=np.uint8).copy()
-  mask = np.asarray(mask, dtype=np.uint8).copy()
-
-  # 255 -> 0
-  pred += 1
-  mask += 1
-  pred = pred * (mask > 0)
-
-  inter = pred * (pred == mask)
-  (area_inter, _) = np.histogram(inter, bins=num_class, range=(1, num_class))
-  (area_pred, _) = np.histogram(pred, bins=num_class, range=(1, num_class))
-  (area_mask, _) = np.histogram(mask, bins=num_class, range=(1, num_class))
-  area_union = area_pred + area_mask - area_inter
-
-  return (area_inter, area_union)
+    def average(self):
+        return self.avg
