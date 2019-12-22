@@ -309,6 +309,8 @@ class new_cloud_Model (nn.Module):
             for i in range(self._num_layers):
                 two_last_inputs = self.cells[i](
                     two_last_inputs[0], two_last_inputs[1])
+
+            last_output = two_last_inputs[-1]
             cloud_output = self.aspp_cloud(last_output)
             cloud_output = F.interpolate(cloud_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
             cloud_output = self.decoder(cloud_output, low_level, size)
