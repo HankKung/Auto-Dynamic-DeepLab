@@ -9,9 +9,10 @@ from utils.calculate_weights import calculate_weigths_labels
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
+from utils.eval_utils import AverageMeter
 from modeling.new_model import *
 from torchviz import make_dot, make_dot_from_trace
-
+import time
 
 class trainNew(object):
     def __init__(self, args):
@@ -128,6 +129,8 @@ class trainNew(object):
         test_loss = 0.0
         time_meter_d = AverageMeter()
         time_meter_c = AverageMeter()
+        pred_d_meter = AverageMeter()
+        pred_c_meter = AverageMeter()
 
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
@@ -144,14 +147,24 @@ class trainNew(object):
 
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
 
+            torch.cuda.synchronize()
+            tic = time.perf_counter()
+
             pred_d = device_output.data.cpu().numpy()
+            pred_d = np.argmax(pred_d, axis=1)
+            torch.cuda.synchronize()
+            pred_d_meter.update(tic - time.perf_counter())
+
+            torch.cuda.synchronize()
+            tic = time.perf_counter()
             pred_c = cloud_output.data.cpu().numpy()
+            pred_c = np.argmax(pred_c, axis=1)
+            torch.cuda.synchronize()
+            pred_c_meter.update(tic - time.perf_counter())
 
             target_show = target
             target = target.cpu().numpy()
 
-            pred_d = np.argmax(pred_d, axis=1)
-            pred_c = np.argmax(pred_c, axis=1)
             # Add batch sample into evaluator
             self.evaluator_device.add_batch(target, pred_d)
             self.evaluator_cloud.add_batch(target, pred_c)
@@ -169,6 +182,7 @@ class trainNew(object):
         print("device_mIoU:{}, cloud_mIoU: {}".format(mIoU_d, mIoU_c))
         print('Loss: %.3f' % test_loss)
         print("device_inference_time:{}, cloud_inference_time: {}".format(time_meter_d.average(), time_meter_c.average()))
+        print("device_pred_time:{}, cloud_pred_time: {}".format(pred_d_meter.average(), pred_c_meter.average()))
 
 def main():
     parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
@@ -209,14 +223,12 @@ def main():
     parser.add_argument('--gpu-ids', type=str, default='0',
                         help='use which gpu to train, must be a \
                         comma-separated list of integers only (default=0)')
-    parser.add_argument('--use_amp', action='store_true', default=
-                        False)  
     parser.add_argument('--seed', type=int, default=2, metavar='S',
                         help='random seed (default: 1)')
     # checking point
     parser.add_argument('--resume', type=str, default=None,
                         help='put the path to resuming file if needed')
-    parser.add_argument('--saved-arch-path', type=str, default=None,
+    parser.add_argument('--saved-arch-path', type=str, default='searched_arch',
                         help='put the path to alphas and betas')
     parser.add_argument('--checkname', type=str, default=None,
                         help='set the checkpoint name')
@@ -240,7 +252,7 @@ def main():
     torch.cuda.manual_seed(args.seed)
     new_trainer = trainNew(args)
 
-    new_trainer.validation(epoch)
+    new_trainer.validation()
     new_trainer.writer.close()
 
 if __name__ == "__main__":
