@@ -52,6 +52,9 @@ class VOCSegmentation(Dataset):
             self.images.append(_image)
             self.masks.append(_mask)
 
+        self.mean = (0.485, 0.456, 0.406)
+        self.std = (0.229, 0.224, 0.225)
+
         # Display stats
         print('Number of images : {:d}'.format(len(self.images)))
 
@@ -70,16 +73,11 @@ class VOCSegmentation(Dataset):
             return self.transform_val(sample)
 
     def transform_tr(self, sample):
-        composed_transforms = transforms.Compose([
-            tr.RandomHorizontalFlip(),
-            tr.RandomScaleCrop(base_size=512, crop_size=513, fill=255),
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            tr.ToTensor()])
-
-        return composed_transforms(sample)
+        transform = tr.tain_preprocess((513,513), self.mean, self.std)
+        return transform(sample)
 
     def transform_val(self, sample):
-        transform = tr.pascal_eval_preprocess(513)
+        transform = tr.eval_preprocess((513,513), self.mean, self.std)
         return transform(sample)
 
     def __str__(self):

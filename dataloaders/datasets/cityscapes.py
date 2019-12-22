@@ -49,6 +49,8 @@ class CityscapesSegmentation(data.Dataset):
 
         self.ignore_index = 255
         self.class_map = dict(zip(self.valid_classes, range(self.NUM_CLASSES)))
+        self.mean=(0.29866842, 0.30135223, 0.30561872)
+        self.std=(0.23925215, 0.23859318, 0.2385942)
 
         if not self.files[split]:
             raise Exception("No files for split=[%s] found in %s" % (split, self.images_base))
@@ -102,16 +104,11 @@ class CityscapesSegmentation(data.Dataset):
                 tr.RandomHorizontalFlip(),
                 tr.FixedResize_Search(resize=self.args.resize),
                 tr.RandomCrop(crop_size=self.args.crop_size),
-                tr.Normalize(mean=(0.29866842, 0.30135223, 0.30561872), std=(0.23925215, 0.23859318, 0.2385942)),
+                tr.Normalize(mean=self.mean, std=self.std),
                 tr.ToTensor()])
         else:
-            composed_transforms = transforms.Compose([
-                tr.RandomHorizontalFlip(),
-                tr.RandomScaleCrop(base_size=self.args.resize, crop_size=self.args.crop_size, fill=255),
-                tr.Normalize(mean=(0.29866842, 0.30135223, 0.30561872), std=(0.23925215, 0.23859318, 0.2385942)),
-                tr.ToTensor()])
-
-        return composed_transforms(sample)
+            transform = tr.tain_preprocess((769,769), self.mean, self.std)
+        return transform(sample)
 
     def transform_val(self, sample):
         if self.search:
@@ -121,22 +118,13 @@ class CityscapesSegmentation(data.Dataset):
               tr.ToTensor()])
        
         else:
-            composed_transforms = transforms.Compose([
-              tr.Crop_for_eval(),
-              tr.Normalize(mean=(0.29866842, 0.30135223, 0.30561872), std=(0.23925215, 0.23859318, 0.2385942)),
-              tr.ToTensor()])
-
-        return composed_transforms(sample)
+            transform = tr.eval_preprocess((1025,2049), self.mean, self.std)
+        return transform(sample)
 
     def transform_ts(self, sample):
 
-        composed_transforms = transforms.Compose([
-            tr.FixedResize(size=self.args.crop_size),
-            tr.Normalize(mean=(0.29866842, 0.30135223, 0.30561872), std=(0.23925215, 0.23859318, 0.2385942)),
-            tr.ToTensor()])
-
-        return composed_transforms(sample)
-
+        transform = tr.eval_preprocess((1025,2049), self.mean, self.std)
+        return transform(sample)
 
 if __name__ == '__main__':
     from dataloaders.utils import decode_segmap

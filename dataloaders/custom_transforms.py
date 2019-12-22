@@ -247,33 +247,76 @@ class Crop_for_eval(object):
 
         return {'image': img,
                 'label': mask}
-class pascal_eval_preprocess(object):
-    def __init__(self, crop_size):
-        self.crop_size = crop_size
-    def __call__(self, sample):
 
+class tran_preprocess(object):
+    def __init__(self, crop_size, mean, std):
+        self.crop_size = crop_size
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, sample):
+        if random.random() < 0.5:
+            image = image.transpose(Image.FLIP_LEFT_RIGHT)
+            mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
+
+        w, h = image.size
+        rand_log_scale = math.log(scale[0], 2) + random.random() * (math.log(scale[1], 2) - math.log(scale[0], 2))
+        random_scale = math.pow(2, rand_log_scale)
+        new_size = (int(round(w * random_scale)), int(round(h * random_scale)))
+        image = image.resize(new_size, Image.ANTIALIAS)
+        mask = mask.resize(new_size, Image.NEAREST)
+
+        data_transforms = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+            ])
+        image = data_transforms(image)
+        mask = torch.LongTensor(np.array(mask).astype(np.int64))
+
+        h, w = image.shape[1], image.shape[2]
+        pad_tb = max(0, self.crop[0] - h)
+        pad_lr = max(0, self.crop[1] - w)
+        image = torch.nn.ZeroPad2d((0, pad_lr, 0, pad_tb))(image)
+        mask = torch.nn.ConstantPad2d((0, pad_lr, 0, pad_tb), 255)(mask)
+
+        h, w = image.shape[1], image.shape[2]
+        i = random.randint(0, h - self.crop[0])
+        j = random.randint(0, w - self.crop[1])
+        image = image[:, i:i + self.crop[0], j:j + self.crop[1]]
+        mask = mask[i:i + self.crop[0], j:j + self.crop[1]]
+
+  return image, mask
+
+
+class eval_preprocess(object):
+    def __init__(self, crop_size, mean, std):
+        self.crop_size = crop_size
+        self.mean = mean
+        self.std = std
+        
+    def __call__(self, sample):
         image = sample['image']
         mask = sample['label']
 
         data_transforms = transforms.Compose([
           transforms.ToTensor(),
-          transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+          transforms.Normalize(mean, std)
         ])
 
         image = data_transforms(image)
         mask = torch.LongTensor(np.array(mask).astype(np.int64))
 
         h, w = image.shape[1], image.shape[2]
-        pad_tb = max(0, self.crop_size - h)
-        pad_lr = max(0, self.crop_size - w)
+        pad_tb = max(0, self.crop_size[0] - h)
+        pad_lr = max(0, self.crop_size[1] - w)
         image = torch.nn.ZeroPad2d((0, pad_lr, 0, pad_tb))(image)
         mask = torch.nn.ConstantPad2d((0, pad_lr, 0, pad_tb), 255)(mask)
 
         h, w = image.shape[1], image.shape[2]
-        i = random.randint(0, h - self.crop_size)
-        j = random.randint(0, w - self.crop_size)
-        image = image[:, i:i + self.crop_size, j:j + self.crop_size]
-        mask = mask[i:i + self.crop_size, j:j + self.crop_size]
+        i = random.randint(0, h - self.crop_size[0])
+        j = random.randint(0, w - self.crop_size[1])
+        image = image[:, i:i + self.crop_size[0], j:j + self.crop_size[1]]
+        mask = mask[i:i + self.crop_size[0], j:j + self.crop_size[1]]
 
         return {'image': image,
                 'label': mask}
