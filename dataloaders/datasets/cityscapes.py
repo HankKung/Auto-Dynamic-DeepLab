@@ -107,7 +107,7 @@ class CityscapesSegmentation(data.Dataset):
                 tr.Normalize(mean=self.mean, std=self.std),
                 tr.ToTensor()])
         else:
-            transform = tr.tain_preprocess((769,769), self.mean, self.std)
+            transform = tr.train_preprocess((769,769), self.mean, self.std)
         return transform(sample)
 
     def transform_val(self, sample):

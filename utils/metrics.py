@@ -43,10 +43,10 @@ class Evaluator(object):
         self.confusion_matrix += self._generate_matrix(gt_image, pre_image)
 
     def reset(self):
-        self.confusion_matrix = torch.zeros((self.num_class,) * 2)
+        self.confusion_matrix = torch.zeros((self.num_class,) * 2).cuda()
 
 
-    def torch_nanmean(x):
+    def torch_nanmean(self, x):
         num = torch.where(torch.isnan(x), torch.full_like(x, 0), torch.full_like(x, 1)).sum()
         value = torch.where(torch.isnan(x), torch.full_like(x, 0), x).sum()
         return value / num

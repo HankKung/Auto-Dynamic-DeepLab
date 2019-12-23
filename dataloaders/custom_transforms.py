@@ -3,7 +3,7 @@ import random
 import numpy as np
 import torchvision.transforms as transforms
 from PIL import Image, ImageOps, ImageFilter
-
+import math
 class Normalize(object):
     """Normalize a tensor image with mean and standard deviation.
     Args:
@@ -162,18 +162,6 @@ class FixedResize(object):
         assert img.size == mask.size
 
         w, h = img.size
-        #print(img.type())
-        #print(w)
-        #print(h)
-        #return
-        #if w > h:
-        #    oh = self.size1
-        #    ow = int(1.0 * w * oh / h)
-        #else:
-        #    ow = self.size1
-        #    oh = int(1.0 * h * ow / w)
-        #ow=1025
-        #oh=2049
         pad_tb = max(0, self.resize[0] - h)
         pad_lr = max(0, self.resize[1] - w)  
         data_transforms = transforms.Compose([
@@ -191,8 +179,7 @@ class FixedResize(object):
         j = random.randint(0, w - self.resize[1])
         img = img[:, i:i + self.resize[0], j:j + self.resize[1]]
         mask = mask[i:i + self.resize[0], j:j + self.resize[1]]
-        #img = img.resize((ow,oh), Image.BILINEAR)
-        #mask = mask.resize((ow,oh), Image.NEAREST)
+
         return {'image': img,
                 'label': mask}
 
@@ -248,17 +235,21 @@ class Crop_for_eval(object):
         return {'image': img,
                 'label': mask}
 
-class tran_preprocess(object):
+class train_preprocess(object):
     def __init__(self, crop_size, mean, std):
         self.crop_size = crop_size
         self.mean = mean
         self.std = std
 
     def __call__(self, sample):
+        image = sample['image']
+        mask = sample['label']
+
         if random.random() < 0.5:
             image = image.transpose(Image.FLIP_LEFT_RIGHT)
             mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
 
+        scale=(0.5, 2.0)
         w, h = image.size
         rand_log_scale = math.log(scale[0], 2) + random.random() * (math.log(scale[1], 2) - math.log(scale[0], 2))
         random_scale = math.pow(2, rand_log_scale)
@@ -268,24 +259,25 @@ class tran_preprocess(object):
 
         data_transforms = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize(mean, std)
+            transforms.Normalize(self.mean, self.std)
             ])
         image = data_transforms(image)
         mask = torch.LongTensor(np.array(mask).astype(np.int64))
 
         h, w = image.shape[1], image.shape[2]
-        pad_tb = max(0, self.crop[0] - h)
-        pad_lr = max(0, self.crop[1] - w)
+        pad_tb = max(0, self.crop_size[0] - h)
+        pad_lr = max(0, self.crop_size[1] - w)
         image = torch.nn.ZeroPad2d((0, pad_lr, 0, pad_tb))(image)
         mask = torch.nn.ConstantPad2d((0, pad_lr, 0, pad_tb), 255)(mask)
 
         h, w = image.shape[1], image.shape[2]
-        i = random.randint(0, h - self.crop[0])
-        j = random.randint(0, w - self.crop[1])
-        image = image[:, i:i + self.crop[0], j:j + self.crop[1]]
-        mask = mask[i:i + self.crop[0], j:j + self.crop[1]]
+        i = random.randint(0, h - self.crop_size[0])
+        j = random.randint(0, w - self.crop_size[1])
+        image = image[:, i:i + self.crop_size[0], j:j + self.crop_size[1]]
+        mask = mask[i:i + self.crop_size[0], j:j + self.crop_size[1]]
 
-  return image, mask
+  return {'image': image,
+                'label': mask}
 
 
 class eval_preprocess(object):
@@ -293,14 +285,14 @@ class eval_preprocess(object):
         self.crop_size = crop_size
         self.mean = mean
         self.std = std
-        
+
     def __call__(self, sample):
         image = sample['image']
         mask = sample['label']
 
         data_transforms = transforms.Compose([
           transforms.ToTensor(),
-          transforms.Normalize(mean, std)
+          transforms.Normalize(self.mean, self.std)
         ])
 
         image = data_transforms(image)
