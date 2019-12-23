@@ -48,7 +48,8 @@ class trainNew(object):
 #            new_network_arch = [1, 0, 0, 1, 2, 3, 2, 3, 3, 2, 2, 3]
 #            new_network_arch = [1, 2, 3, 2, 3, 2, 1, 2, 1, 2, 1, 2]
             new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
-            B_d=4
+            args.B_d=4
+            low_level_layer = 1
 
         elif args.network == 'autodeeplab':
             new_network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
@@ -66,16 +67,16 @@ class trainNew(object):
             cell=np.int_(cell)
             new_cell_arch_d = cell
             new_cell_arch_c = cell      
-            B_d=5
+            args.B_d=5
+            low_level_layer = 2
 
         # Define network
-        model = new_cloud_Model(network_arch= new_network_arch,
-                         cell_arch_d = new_cell_arch_d,
-                         cell_arch_c = new_cell_arch_c,
-                         num_classes=self.nclass,
-                         device_num_layers=6,
-                         B_d=B_d,
-                         sync_bn=args.sync_bn)
+        model = new_cloud_Model(new_network_arch,
+                                ew_cell_arch_d,
+                                ew_cell_arch_c,
+                                self.nclass,
+                                args,
+                                low_level_layer)
 
         train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
                         {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
@@ -202,12 +203,11 @@ class trainNew(object):
             loss = (device_loss + cloud_loss) /2
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
-            pred_d = device_output.data.cpu().numpy()
-            pred_c = cloud_output.data.cpu().numpy()
+
             target_show = target
             target = target.cpu().numpy()
-            pred_d = np.argmax(pred_d, axis=1)
-            pred_c = np.argmax(pred_c, axis=1)
+            pred_d = torch.argmax(device_output, axis=1)
+            pred_c = torch.argmax(cloud_output, axis=1)
             # Add batch sample into evaluator
             self.evaluator_device.add_batch(target, pred_d)
             self.evaluator_cloud.add_batch(target, pred_c)
@@ -240,15 +240,22 @@ class trainNew(object):
 
 def main():
     parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
+
+    ## model setting
     parser.add_argument('--network', type=str, default='dist',
                         choices=['dist', 'autodeeplab'],
                         help='backbone name (default: resnet)')
     parser.add_argument('--backbone', type=str, default='resnet',
                         choices=['resnet', 'xception', 'drn', 'mobilenet', 'autodeeplab'],
                         help='backbone name (default: resnet)')
-    parser.add_argument('--opt_level', type=str, default='O0',
-                        choices=['O0', 'O1', 'O2', 'O3'],
-                        help='opt level for half percision training (default: O0)')
+    parser.add_argument('--device_num_layers', type=int, default=6)
+    parser.add_argument('--F_c', type=int, default=20)
+    parser.add_argument('--F_d', type=int, default=20)
+    parser.add_argument('--B_c', type=int, default=5)
+    parser.add_argument('--B_d', type=int, default=4)
+
+
+    ## dataset config
     parser.add_argument('--dataset', type=str, default='cityscapes',
                         choices=['pascal', 'coco', 'cityscapes'],
                         help='dataset name (default: pascal)')
@@ -258,6 +265,10 @@ def main():
                         help='crop image size')
     parser.add_argument('--resize', type=int, default=512,
                         help='resize image size')
+
+    # training config
+    parser.add_argument('--autodeeplab', type=str, default='train',
+                        choices=['search', 'train'])
     parser.add_argument('--sync-bn', type=bool, default=None,
                         help='whether to use sync bn (default: auto)')
     parser.add_argument('--freeze-bn', type=bool, default=False,
@@ -265,7 +276,6 @@ def main():
     parser.add_argument('--loss-type', type=str, default='ce',
                         choices=['ce', 'focal'],
                         help='loss func type (default: ce)')
-    # training hyper params
     parser.add_argument('--epochs', type=int, default=None, metavar='N',
                         help='number of epochs to train (default: auto)')
     parser.add_argument('--start_epoch', type=int, default=0,
@@ -278,9 +288,12 @@ def main():
                                 testing (default: auto)')
     parser.add_argument('--use-balanced-weights', action='store_true', default=False,
                         help='whether to use balanced weights (default: False)')
+
+
     # optimizer params
     parser.add_argument('--lr', type=float, default=None, metavar='LR',
                         help='learning rate (default: auto)')
+    parser.add_argument('--min_lr', type=float, default=0.000001) #TODO: CHECK THAT THEY EVEN DO THIS FOR THE MODEL IN THE PAPER
     parser.add_argument('--lr-scheduler', type=str, default='poly',
                         choices=['poly', 'step', 'cos'],
                         help='lr scheduler mode: (default: poly)')
@@ -291,16 +304,19 @@ def main():
                         metavar='M', help='w-decay (default: 1e-4)')
     parser.add_argument('--nesterov', action='store_true', default=False,
                         help='whether use nesterov (default: False)')
+
+
     # cuda, seed and logging
     parser.add_argument('--no-cuda', action='store_true', default=
                         False, help='disables CUDA training')
     parser.add_argument('--gpu-ids', type=str, default='0',
                         help='use which gpu to train, must be a \
                         comma-separated list of integers only (default=0)')
-    parser.add_argument('--use_amp', action='store_true', default=
-                        False)  
+
     parser.add_argument('--seed', type=int, default=2, metavar='S',
                         help='random seed (default: 1)')
+
+
     # checking point
     parser.add_argument('--resume', type=str, default=None,
                         help='put the path to resuming file if needed')
@@ -308,17 +324,17 @@ def main():
                         help='put the path to alphas and betas')
     parser.add_argument('--checkname', type=str, default=None,
                         help='set the checkpoint name')
+
+
     # finetuning pre-trained models
     parser.add_argument('--ft', action='store_true', default=False,
                         help='finetuning on a different dataset')
+
+
     # evaluation option
     parser.add_argument('--eval-interval', type=int, default=100,
                         help='evaluuation interval (default: 1)')
-    parser.add_argument('--filter_multiplier', type=int, default=20)
-    parser.add_argument('--autodeeplab', type=str, default='train',
-                        choices=['search', 'train'])
-    parser.add_argument('--min_lr', type=float, default=0.000001) #TODO: CHECK THAT THEY EVEN DO THIS FOR THE MODEL IN THE PAPER
-
+    
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     if args.cuda:
@@ -346,7 +362,7 @@ def main():
     print('Total Epoches:', new_trainer.args.epochs)
     for epoch in range(new_trainer.args.start_epoch, new_trainer.args.epochs):
         new_trainer.training(epoch)
-        if epoch==0 or epoch % args.eval_interval == (args.eval_interval - 1) or epoch > new_trainer.args.epochs - 50
+        if epoch==0 or epoch % args.eval_interval == (args.eval_interval - 1) or epoch > new_trainer.args.epochs - 50:
             new_trainer.validation(epoch)
     new_trainer.writer.close()
 
