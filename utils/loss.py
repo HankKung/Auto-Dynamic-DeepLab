@@ -2,13 +2,12 @@ import torch
 import torch.nn as nn
 
 class SegmentationLosses(object):
-    def __init__(self, weight=None, size_average=True, batch_average=True, ignore_index=255, search=False, cuda=False):
+    def __init__(self, weight=None, size_average=True, batch_average=True, ignore_index=255, cuda=False):
         self.ignore_index = ignore_index
         self.weight = weight
         self.size_average = size_average
         self.batch_average = batch_average
         self.cuda = cuda
-        self.search = search
 
     def build_loss(self, mode='ce'):
         """Choices: ['ce' or 'focal']"""
@@ -28,8 +27,6 @@ class SegmentationLosses(object):
 
         loss = criterion(logit, target.long())
 
-        if self.batch_average and self.search:
-            loss /= n
 
         return loss
 

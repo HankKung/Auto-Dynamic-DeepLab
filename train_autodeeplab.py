@@ -56,7 +56,7 @@ class Trainer(object):
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
-        self.criterion = SegmentationLosses(weight=weight, search=True, cuda=args.cuda).build_loss(mode=args.loss_type)
+        self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
 
         # Define network
         model = AutoDeeplab (num_classes=self.nclass, num_layers=12, F=self.args.filter_multiplier,
@@ -217,7 +217,7 @@ class Trainer(object):
                 device_output, cloud_output = self.model(image)
             device_loss = self.criterion(device_output, target)
             cloud_loss = self.criterion(cloud_output, target)
-            loss = device_loss + cloud_loss
+            loss = (device_loss + cloud_loss)/2
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
             device_pred = device_output.data.cpu().numpy()
