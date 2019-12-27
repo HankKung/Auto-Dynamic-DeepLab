@@ -28,7 +28,6 @@ class trainNew(object):
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
         self.use_amp = False
-        self.opt_level = args.opt_level
 
         # Define Dataloader
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
@@ -72,8 +71,8 @@ class trainNew(object):
 
         # Define network
         model = new_cloud_Model(new_network_arch,
-                                ew_cell_arch_d,
-                                ew_cell_arch_c,
+                                new_cell_arch_d,
+                                new_cell_arch_c,
                                 self.nclass,
                                 args,
                                 low_level_layer)

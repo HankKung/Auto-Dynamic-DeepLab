@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 
 OPS = {
   'none' : lambda C, stride, BatchNorm, eps, momentum, affine: Zero(stride),
