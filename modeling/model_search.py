@@ -581,6 +581,7 @@ class AutoDeeplab (nn.Module) :
         device_32_new = upsample(device_32_new)
 
         sum_device_feature_map = device_4_new + device_8_new + device_16_new + device_32_new
+        del device_4_new, device_8_new, device_16_new, device_32_new
         sum_feature_map = aspp_result_4 + aspp_result_8 + aspp_result_16 + aspp_result_32
 
         return sum_device_feature_map, sum_feature_map

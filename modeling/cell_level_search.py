@@ -119,7 +119,7 @@ class Cell(nn.Module):
             if s1_up is not None:
                 states_up = [0, s1_up]
                 all_states.append(states_up)
-
+        del s0
         final_concates = []
         for states in all_states:
             offset = 0
