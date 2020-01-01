@@ -75,6 +75,8 @@ class Cell(nn.Module):
         s0 = self.pre_preprocess(s0)
         
         states = [s0, s1]
+        del s0
+        del s1
 
         offset = 0
         ops_index = 0
@@ -104,7 +106,7 @@ class new_device_Model (nn.Module):
         self.cell_arch = torch.from_numpy(cell_arch)
         self._num_layers = num_layers
         self._num_classes = num_classes
-
+        self.low_level_layer = low_level_layer
         self.decoder = Decoder(num_classes, BatchNorm)
 
         self.stem0 = nn.Sequential(
@@ -126,7 +128,7 @@ class new_device_Model (nn.Module):
         FB = F * B
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
 
-        self.low_level_conv = nn.Sequential(nn.Conv2d(FB * fm[self.network_arch[low_level_layer]], 48, 1),
+        self.low_level_conv = nn.Sequential(nn.Conv2d(FB * 2**network_arch[low_level_layer], 48, 1),
                                     BatchNorm(48),
                                     nn.ReLU())
 
@@ -186,10 +188,11 @@ class new_device_Model (nn.Module):
                 two_last_inputs[0], two_last_inputs[1])
             if i == 0:
                 del stem
-            elif i == 1:
+            if i == 1:
+                del stem0
+            elif i == self.low_level_layer:
                 low_level = two_last_inputs[1]
                 low_level = self.low_level_conv(low_level)
-                del stem0
             elif i==2:
                 del stem1
    
@@ -200,8 +203,6 @@ class new_device_Model (nn.Module):
     def _init_weight(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt(2. / n))
                 torch.nn.init.kaiming_normal_(m.weight)
             elif isinstance(m, SynchronizedBatchNorm2d):
                 m.weight.data.fill_(1)
@@ -248,7 +249,7 @@ class new_cloud_Model (nn.Module):
                 _cell = Cell(BatchNorm, B_c, 
                              F_d * B_d * fm[device_layer[-2]], F_d * B_d * fm[device_layer[-1]],
                              self.cell_arch_c, self.network_arch[i],
-                             F * fm[level],
+                             F_c * fm[level],
                              downup_sample, pre_downup_sample)
             
             elif i == 1:
@@ -283,6 +284,7 @@ class new_cloud_Model (nn.Module):
         size = (x.shape[2], x.shape[3])
         if not evaluation:
             low_level, two_last_inputs, device_output = self.device(x)
+            del x
             for i in range(self._num_layers):
                 two_last_inputs = self.cells[i](
                     two_last_inputs[0], two_last_inputs[1])
@@ -296,7 +298,8 @@ class new_cloud_Model (nn.Module):
             cloud_output = self.aspp_cloud(last_output)
             del last_output
             cloud_output = F.interpolate(cloud_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            cloud_output = self.decoder(cloud_output, low_level, size)         
+            cloud_output = self.decoder(cloud_output, low_level, size)     
+            del low_level    
 
             return device_output, cloud_output
 
@@ -305,6 +308,7 @@ class new_cloud_Model (nn.Module):
             tic = time.perf_counter()
 
             low_level, two_last_inputs, device_output = self.device(x)
+            del x
             device_output = F.interpolate(device_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
             device_output = self.device.decoder(device_output, low_level, size)
 
