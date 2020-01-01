@@ -162,18 +162,14 @@ class trainNew(object):
             device_loss = self.criterion(device_output, target)
             cloud_loss = self.criterion(cloud_output, target)
             loss = (device_loss + cloud_loss)/2
-            if self.use_amp:
-                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                    scaled_loss.backward()
-            else:
-                loss.backward()
+            loss.backward()
 
             self.optimizer.step()
             train_loss += loss.item()
-
-            tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
-            if i %50 == 0:
-                self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
+            if i % 50 == 0:
+                tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
+            # if i %50 == 0:
+            #     self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
 
             del cloud_loss
             del device_loss
@@ -204,13 +200,12 @@ class trainNew(object):
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
 
             target_show = target
-            target = target.cpu().numpy()
             pred_d = torch.argmax(device_output, axis=1)
             pred_c = torch.argmax(cloud_output, axis=1)
             # Add batch sample into evaluator
             self.evaluator_device.add_batch(target, pred_d)
             self.evaluator_cloud.add_batch(target, pred_c)
-            if i == 0:
+            if epoch//100 == i:
                 global_step = epoch
                 self.summary.visualize_image(self.writer, self.args.dataset, image, target_show, cloud_output, global_step)
 
