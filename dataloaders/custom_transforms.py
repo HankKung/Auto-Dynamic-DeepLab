@@ -236,7 +236,7 @@ class Crop_for_eval(object):
                 'label': mask}
 
 class train_preprocess(object):
-    def __init__(self, crop_size, mean, std):
+    def __init__(self, crop_size, mean, std, scale=0):
         self.crop_size = crop_size
         self.mean = mean
         self.std = std
@@ -248,14 +248,18 @@ class train_preprocess(object):
         if random.random() < 0.5:
             image = image.transpose(Image.FLIP_LEFT_RIGHT)
             mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
-
-        scale=(0.5, 2.0)
-        w, h = image.size
-        rand_log_scale = math.log(scale[0], 2) + random.random() * (math.log(scale[1], 2) - math.log(scale[0], 2))
-        random_scale = math.pow(2, rand_log_scale)
-        new_size = (int(round(w * random_scale)), int(round(h * random_scale)))
-        image = image.resize(new_size, Image.ANTIALIAS)
-        mask = mask.resize(new_size, Image.NEAREST)
+        if scale == 0:
+            scale=(0.5, 2.0)
+            w, h = image.size
+            rand_log_scale = math.log(scale[0], 2) + random.random() * (math.log(scale[1], 2) - math.log(scale[0], 2))
+            random_scale = math.pow(2, rand_log_scale)
+            new_size = (int(round(w * random_scale)), int(round(h * random_scale)))
+            image = image.resize(new_size, Image.ANTIALIAS)
+            mask = mask.resize(new_size, Image.NEAREST)
+        else:
+            new_size = (int(round(w * scale)), int(round(h * scale)))
+            image = image.resize(new_size, Image.ANTIALIAS)
+            mask = mask.resize(new_size, Image.NEAREST)
 
         data_transforms = transforms.Compose([
             transforms.ToTensor(),
@@ -276,7 +280,7 @@ class train_preprocess(object):
         image = image[:, i:i + self.crop_size[0], j:j + self.crop_size[1]]
         mask = mask[i:i + self.crop_size[0], j:j + self.crop_size[1]]
 
-  return {'image': image,
+        return {'image': image,
                 'label': mask}
 
 

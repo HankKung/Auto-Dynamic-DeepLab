@@ -100,22 +100,14 @@ class CityscapesSegmentation(data.Dataset):
 
     def transform_tr(self, sample):
         if self.search:
-            composed_transforms = transforms.Compose([
-                tr.RandomHorizontalFlip(),
-                tr.FixedResize_Search(resize=self.args.resize),
-                tr.RandomCrop(crop_size=self.args.crop_size),
-                tr.Normalize(mean=self.mean, std=self.std),
-                tr.ToTensor()])
+            transform = tr.train_preprocess((512,1024), self.mean, self.std, scale=0.5)
         else:
             transform = tr.train_preprocess((769,769), self.mean, self.std)
         return transform(sample)
 
     def transform_val(self, sample):
         if self.search:
-            composed_transforms = transforms.Compose([
-              tr.FixedResize_Search(resize=513),
-              tr.Normalize(mean=(0.29866842, 0.30135223, 0.30561872), std=(0.23925215, 0.23859318, 0.2385942)),
-              tr.ToTensor()])
+            transform = tr.eval_preprocess((1025,2049), self.mean, self.std)
        
         else:
             transform = tr.eval_preprocess((1025,2049), self.mean, self.std)
