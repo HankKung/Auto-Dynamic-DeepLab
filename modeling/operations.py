@@ -35,8 +35,9 @@ class ReLUConvBN(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+                if m.affine != False:
+                    m.weight.data.fill_(1)
+                    m.bias.data.zero_()
 
 
 class DilConv(nn.Module):
@@ -62,8 +63,9 @@ class DilConv(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+                if m.affine != False:
+                    m.weight.data.fill_(1)
+                    m.bias.data.zero_()
 
 
 class SepConv(nn.Module):
@@ -93,8 +95,9 @@ class SepConv(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+                if m.affine != False:
+                    m.weight.data.fill_(1)
+                    m.bias.data.zero_()
 
 
 class Identity(nn.Module):
@@ -144,8 +147,9 @@ class FactorizedReduce(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+                if m.affine != False:
+                    m.weight.data.fill_(1)
+                    m.bias.data.zero_()
 
 
 class DoubleFactorizedReduce(nn.Module):
@@ -174,8 +178,9 @@ class DoubleFactorizedReduce(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+                if m.affine != False:
+                    m.weight.data.fill_(1)
+                    m.bias.data.zero_()
 
 
 class ASPP(nn.Module):
@@ -223,5 +228,6 @@ class ASPP(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+                if m.affine != False:
+                    m.weight.data.fill_(1)
+                    m.bias.data.zero_()

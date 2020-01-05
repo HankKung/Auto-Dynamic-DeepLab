@@ -100,7 +100,7 @@ class CityscapesSegmentation(data.Dataset):
 
     def transform_tr(self, sample):
         if self.search:
-            transform = tr.train_preprocess((512,1024), self.mean, self.std, scale=0.5)
+            transform = tr.train_preprocess((321,321), self.mean, self.std, scale=0.5)
         else:
             transform = tr.train_preprocess((769,769), self.mean, self.std)
         return transform(sample)

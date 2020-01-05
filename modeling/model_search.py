@@ -596,12 +596,13 @@ class AutoDeeplab (nn.Module) :
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+                if m.affine != False:
+                    m.weight.data.fill_(1)
+                    m.bias.data.zero_()
 
     def _initialize_alphas_betas(self):
-        k_d = sum(1 for i in range(self._step_d) for n in range(2+i))
-        k_c = sum(1 for i in range(self._step_c) for n in range(2+i))
+        k_d = sum(1 for i in range(self.B_d) for n in range(2+i))
+        k_c = sum(1 for i in range(self.B_c) for n in range(2+i))
         num_ops = len(PRIMITIVES)
         alphas_d = torch.tensor (1e-3*torch.randn(k_d, num_ops).cuda(), requires_grad=True)
         alphas_c = torch.tensor (1e-3*torch.randn(k_c, num_ops).cuda(), requires_grad=True)

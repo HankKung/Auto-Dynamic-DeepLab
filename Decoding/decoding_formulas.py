@@ -32,7 +32,6 @@ class Decoder(object):
         self._B_d = B_d
         self._num_layers = len(self._betas)
         self.network_space = torch.zeros(12, 4, 3)
-        print(self._betas)
         for layer in range(len(self._betas)):
             if layer == 0:
                 self.network_space[layer][0][1:] = F.softmax(self._betas[layer][0][1:], dim=-1)

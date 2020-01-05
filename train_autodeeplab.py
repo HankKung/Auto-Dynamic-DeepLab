@@ -63,7 +63,7 @@ class Trainer(object):
 
         # Define network
         model = AutoDeeplab (num_classes=self.nclass, num_layers=12, F=self.args.filter_multiplier,
-                             B_c=self.args.block_multiplier, distributed_layer=5, sync_bn=args.sync_bn)
+                             B_c=self.args.B_c, B_d=self.args.B_d, distributed_layer=5, sync_bn=args.sync_bn)
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
                 args.lr,
@@ -261,14 +261,16 @@ class Trainer(object):
         decoder = Decoder(self.model.alphas_d,
                           self.model.alphas_c,
                           self.model.betas,
-                          args.B_c,
-                          args.B_d)
+                          self.args.B_c,
+                          self.args.B_d)
         result_paths, result_paths_space = decoder.viterbi_decode()
         genotype_d, genotype_c = decoder.genotype_decode()
 
         try:
             dir_name = os.path.join(self.saver.experiment_dir, str(epoch))
             os.mkdir(dir_name)
+        except:
+            print('folder path error')
 
         network_path_filename = os.path.join(dir_name,'network_path')
         genotype_filename_d = os.path.join(dir_name, 'genotype_device')
@@ -317,13 +319,6 @@ def main():
     parser.add_argument('--load-parallel', type=int, default=0)
     parser.add_argument('--workers', type=int, default=0,
                         metavar='N', help='dataloader threads')
-    parser.add_argument('--base_size', type=int, default=320,
-                        help='base image size')
-    parser.add_argument('--crop_size', type=int, default=320,
-                        help='crop image size')
-    parser.add_argument('--resize', type=int, default=512,
-                        help='resize image size')
-
     parser.add_argument('--batch-size', type=int, default=2,
                         metavar='N', help='input batch size for \
                                 training (default: auto)')

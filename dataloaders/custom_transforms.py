@@ -240,6 +240,7 @@ class train_preprocess(object):
         self.crop_size = crop_size
         self.mean = mean
         self.std = std
+        self.scale = scale
 
     def __call__(self, sample):
         image = sample['image']
@@ -248,7 +249,7 @@ class train_preprocess(object):
         if random.random() < 0.5:
             image = image.transpose(Image.FLIP_LEFT_RIGHT)
             mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
-        if scale == 0:
+        if self.scale == 0:
             scale=(0.5, 2.0)
             w, h = image.size
             rand_log_scale = math.log(scale[0], 2) + random.random() * (math.log(scale[1], 2) - math.log(scale[0], 2))
@@ -257,7 +258,8 @@ class train_preprocess(object):
             image = image.resize(new_size, Image.ANTIALIAS)
             mask = mask.resize(new_size, Image.NEAREST)
         else:
-            new_size = (int(round(w * scale)), int(round(h * scale)))
+            w, h = image.size
+            new_size = (int(round(w * self.scale)), int(round(h * self.scale)))
             image = image.resize(new_size, Image.ANTIALIAS)
             mask = mask.resize(new_size, Image.NEAREST)
 
