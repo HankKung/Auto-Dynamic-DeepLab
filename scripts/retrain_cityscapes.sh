@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=0,1 python ../train_new_model.py \
+CUDA_VISIBLE_DEVICES=0,1 python ../train.py \
  --batch-size 16 --dataset cityscapes --checkname proposed_retrain_large \
  --epoch 8100 --backbone autodeeplab  --F_c 48\
  --network dist --use-balanced-weights \

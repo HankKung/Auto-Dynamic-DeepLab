@@ -145,13 +145,6 @@ class Trainer(object):
                 else:
                     self.model.load_state_dict(checkpoint['state_dict'])
 
-
-            if not args.ft:
-                self.optimizer.load_state_dict(checkpoint['optimizer'])
-            self.best_pred = checkpoint['best_pred']
-            print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.resume, checkpoint['epoch']))
-
     def training(self, epoch):
         train_loss = 0.0
         search_loss = 0.0
