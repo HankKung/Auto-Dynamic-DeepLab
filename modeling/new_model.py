@@ -96,6 +96,7 @@ class Cell(nn.Module):
         concat_feature = torch.cat(states[-self.B:], dim=1)
         return prev_input, concat_feature
 
+
 class new_device_Model (nn.Module):
     def __init__(self, network_arch, cell_arch, num_classes, num_layers, BatchNorm,\
         criterion=None, F=20, B=4, low_level_layer=1):
@@ -186,13 +187,14 @@ class new_device_Model (nn.Module):
         for i in range(self._num_layers):       
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
-            if i == 0:
-                del stem
-            if i == 1:
-                del stem0
-            elif i == self.low_level_layer:
+
+            if i == self.low_level_layer:
                 low_level = two_last_inputs[1]
                 low_level = self.low_level_conv(low_level)
+            if i == 0:
+                del stem
+            elif i == 1:
+                del stem0
             elif i==2:
                 del stem1
    

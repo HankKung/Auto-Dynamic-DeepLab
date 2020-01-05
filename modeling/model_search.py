@@ -268,21 +268,21 @@ class AutoDeeplab (nn.Module) :
             # normalized_betas[layer][ith node][0 : ➚, 1: ➙, 2 : ➘]
             for layer in range (len(self.betas)):
                 if layer == 0:
-                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1) * (2/3)
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1)
 
                 elif layer == 1:
-                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1) * (2/3)
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1)
                     normalized_betas[layer][1] = F.softmax (self.betas[layer][1].to(device=img_device), dim=-1)
 
                 elif layer == 2:
-                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1) * (2/3)
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1)
                     normalized_betas[layer][1] = F.softmax (self.betas[layer][1].to(device=img_device), dim=-1)
                     normalized_betas[layer][2] = F.softmax (self.betas[layer][2].to(device=img_device), dim=-1)
                 else :
-                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1) * (2/3)
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1)
                     normalized_betas[layer][1] = F.softmax (self.betas[layer][1].to(device=img_device), dim=-1)
                     normalized_betas[layer][2] = F.softmax (self.betas[layer][2].to(device=img_device), dim=-1)
-                    normalized_betas[layer][3][:2] = F.softmax (self.betas[layer][3][:2].to(device=img_device), dim=-1) * (2/3)
+                    normalized_betas[layer][3][:2] = F.softmax (self.betas[layer][3][:2].to(device=img_device), dim=-1)
 
         else:
             normalized_alphas_d = F.softmax(self.alphas_d, dim=-1)
@@ -290,21 +290,21 @@ class AutoDeeplab (nn.Module) :
 
             for layer in range (len(self.betas)):
                 if layer == 0:
-                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1) * (2/3)
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1)
 
                 elif layer == 1:
-                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1) * (2/3)
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1)
                     normalized_betas[layer][1] = F.softmax (self.betas[layer][1], dim=-1)
 
                 elif layer == 2:
-                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1) * (2/3)
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1)
                     normalized_betas[layer][1] = F.softmax (self.betas[layer][1], dim=-1)
                     normalized_betas[layer][2] = F.softmax (self.betas[layer][2], dim=-1)
                 else :
-                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1) * (2/3)
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1)
                     normalized_betas[layer][1] = F.softmax (self.betas[layer][1], dim=-1)
                     normalized_betas[layer][2] = F.softmax (self.betas[layer][2], dim=-1)
-                    normalized_betas[layer][3][:2] = F.softmax (self.betas[layer][3][:2], dim=-1) * (2/3)
+                    normalized_betas[layer][3][:2] = F.softmax (self.betas[layer][3][:2], dim=-1)
 
         for layer in range (self._num_layers) :
 

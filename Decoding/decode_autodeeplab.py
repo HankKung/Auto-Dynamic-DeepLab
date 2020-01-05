@@ -11,7 +11,7 @@ from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
 from modeling.model_search import AutoDeeplab
-from decoding_formulas import Decoder
+from decoding.ecoding_formulas import Decoder
 
 
 class Loader(object):

@@ -205,9 +205,6 @@ class trainNew(object):
             # Add batch sample into evaluator
             self.evaluator_device.add_batch(target, pred_d)
             self.evaluator_cloud.add_batch(target, pred_c)
-            if epoch//100 == i:
-                global_step = epoch
-                self.summary.visualize_image(self.writer, self.args.dataset, image, target_show, cloud_output, global_step)
 
         mIoU_d = self.evaluator_device.Mean_Intersection_over_Union()
         mIoU_c = self.evaluator_cloud.Mean_Intersection_over_Union()

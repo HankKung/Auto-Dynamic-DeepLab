@@ -15,7 +15,10 @@ from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
 from modeling.model_search import AutoDeeplab
+from decoding.decoding_formulas import Decoder
 import apex
+
+
 try:
     from apex import amp
     APEX_AVAILABLE = True
@@ -43,7 +46,7 @@ class Trainer(object):
         self.use_amp = True if (APEX_AVAILABLE and args.use_amp) else False
         self.opt_level = args.opt_level
 
-        kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last':True}
+        kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last':True, 'drop_last': True}
         self.train_loaderA, self.train_loaderB, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
         if args.use_balanced_weights:
@@ -80,7 +83,6 @@ class Trainer(object):
         # Define lr scheduler
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                       args.epochs, len(self.train_loaderA), min_lr=args.min_lr)
-        # TODO: Figure out if len(self.train_loader) should be devided by two ? in other module as well
         # Using cuda
         if args.cuda:
             self.model = self.model.cuda()
@@ -111,7 +113,7 @@ class Trainer(object):
             print('cuda finished')
 
 
-       #Using data parallel
+        #Using data parallel
         if args.cuda and len(self.args.gpu_ids) >1:
             if self.opt_level == 'O2' or self.opt_level == 'O3':
                 print('currently cannot run with nn.DataParallel and optimization level', self.opt_level)
@@ -179,15 +181,16 @@ class Trainer(object):
                 search = next(iter(self.train_loaderB))
                 image_search, target_search = search['image'], search['label']
                 if self.args.cuda:
-                    image_search, target_search = image_search.cuda (), target_search.cuda ()
+                    image_search, target_search = image_search.cuda(), target_search.cuda()
 
                 self.architect_optimizer.zero_grad()
                 device_output_search, cloud_output_search = self.model(image_search)
 
                 device_arch_loss = self.criterion(device_output_search, target_search)
                 cloud_arch_loss = self.criterion(cloud_output_search, target_search)
-                arch_loss = device_arch_loss + cloud_arch_loss
+                arch_loss = (device_arch_loss + cloud_arch_loss)/2
                 search_loss += arch_loss.item()
+
                 if self.use_amp:
                     with amp.scale_loss(arch_loss, self.architect_optimizer) as arch_scaled_loss:
                        arch_scaled_loss.backward()
@@ -219,16 +222,15 @@ class Trainer(object):
             cloud_loss = self.criterion(cloud_output, target)
             loss = (device_loss + cloud_loss)/2
             test_loss += loss.item()
+
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
-            device_pred = device_output.data.cpu().numpy()
-            cloud_pred = cloud_output.data.cpu().numpy()
-            target = target.cpu().numpy()
-            device_pred = np.argmax(device_pred, axis=1)
-            cloud_pred = np.argmax(cloud_pred, axis=1)
+
+            device_output = torch.argmax(device_output, axis=1)
+            cloud_output = torch.argmax(cloud_output, axis=1)
 
             # Add batch sample into evaluator
-            self.evaluator.add_batch(target, device_pred)
-            self.evaluator_cloud.add_batch(target, cloud_pred)
+            self.evaluator.add_batch(target, device_output)
+            self.evaluator_cloud.add_batch(target, cloud_output)
 
         mIoU = self.evaluator.Mean_Intersection_over_Union()
         mIoU_cloud = self.evaluator_cloud.Mean_Intersection_over_Union()
@@ -255,25 +257,64 @@ class Trainer(object):
                 'best_pred': self.best_pred,
             }, is_best)
 
+        ## decode the arch
+        decoder = Decoder(self.model.alphas_d,
+                          self.model.alphas_c,
+                          self.model.betas,
+                          args.B_c,
+                          args.B_d)
+        result_paths, result_paths_space = decoder.viterbi_decode()
+        genotype_d, genotype_c = decoder.genotype_decode()
+
+        try:
+            dir_name = os.path.join(self.saver.experiment_dir, str(epoch))
+            os.mkdir(dir_name)
+
+        network_path_filename = os.path.join(dir_name,'network_path')
+        genotype_filename_d = os.path.join(dir_name, 'genotype_device')
+        genotype_filename_c = os.path.join(dir_name, 'genotype_cloud')
+
+        np.save(network_path_filename, network_path)
+        np.save(genotype_filename_d, genotype_d)
+        np.save(genotype_filename_c, genotype_c)
+        
+
 def main():
-    parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
-    parser.add_argument('--backbone', type=str, default='resnet',
-                        choices=['resnet', 'xception', 'drn', 'mobilenet'],
-                        help='backbone name (default: resnet)')
+    parser = argparse.ArgumentParser(description="The Search")
+
+    # Search Network
     parser.add_argument('--opt_level', type=str, default='O0',
                         choices=['O0', 'O1', 'O2', 'O3'],
                         help='opt level for half percision training (default: O0)')
-    parser.add_argument('--out-stride', type=int, default=16,
-                        help='network output stride (default: 8)')
     parser.add_argument('--dataset', type=str, default='kd',
                         choices=['pascal', 'coco', 'cityscapes', 'kd'],
                         help='dataset name (default: pascal)')
     parser.add_argument('--autodeeplab', type=str, default='search',
                         choices=['search', 'train'])
+    parser.add_argument('--filter_multiplier', type=int, default=8)
+    parser.add_argument('--B_c', type=int, default=5)
+    parser.add_argument('--B_d', type=int, default=5)
+
+
+    # Training Setting
+    parser.add_argument('--start_epoch', type=int, default=0,
+                        metavar='N', help='start epochs (default:0)')
+    parser.add_argument('--epochs', type=int, default=40, metavar='N',
+                        help='number of epochs to train (default: auto)')
+    parser.add_argument('--alpha_epoch', type=int, default=20,
+                        metavar='N', help='epoch to start training alphas')
+    parser.add_argument('--sync-bn', type=bool, default=None,
+                        help='whether to use sync bn (default: auto)')
+    parser.add_argument('--loss-type', type=str, default='ce',
+                        choices=['ce', 'focal'],
+                        help='loss func type (default: ce)')
+    parser.add_argument('--clean-module', type=int, default=0)
+
+
+    # Dataset Setting
     parser.add_argument('--use-sbd', action='store_true', default=False,
                         help='whether to use SBD dataset (default: True)')
     parser.add_argument('--load-parallel', type=int, default=0)
-    parser.add_argument('--clean-module', type=int, default=0)
     parser.add_argument('--workers', type=int, default=0,
                         metavar='N', help='dataloader threads')
     parser.add_argument('--base_size', type=int, default=320,
@@ -282,31 +323,17 @@ def main():
                         help='crop image size')
     parser.add_argument('--resize', type=int, default=512,
                         help='resize image size')
-    parser.add_argument('--sync-bn', type=bool, default=None,
-                        help='whether to use sync bn (default: auto)')
-    parser.add_argument('--freeze-bn', type=bool, default=False,
-                        help='whether to freeze bn parameters (default: False)')
-    parser.add_argument('--loss-type', type=str, default='ce',
-                        choices=['ce', 'focal'],
-                        help='loss func type (default: ce)')
-    # training hyper params
-    parser.add_argument('--epochs', type=int, default=40, metavar='N',
-                        help='number of epochs to train (default: auto)')
-    parser.add_argument('--start_epoch', type=int, default=0,
-                        metavar='N', help='start epochs (default:0)')
-    parser.add_argument('--filter_multiplier', type=int, default=8)
-    parser.add_argument('--block_multiplier', type=int, default=5)
-    parser.add_argument('--step', type=int, default=5)
-    parser.add_argument('--alpha_epoch', type=int, default=20,
-                        metavar='N', help='epoch to start training alphas')
+
     parser.add_argument('--batch-size', type=int, default=2,
                         metavar='N', help='input batch size for \
                                 training (default: auto)')
-    parser.add_argument('--test-batch-size', type=int, default=None,
+    parser.add_argument('--test-batch-size', type=int, default=1,
                         metavar='N', help='input batch size for \
                                 testing (default: auto)')
     parser.add_argument('--use_balanced_weights', action='store_true', default=False,
                         help='whether to use balanced weights (default: False)')
+
+
     # optimizer params
     parser.add_argument('--lr', type=float, default=0.025, metavar='LR',
                         help='learning rate (default: auto)')
@@ -326,6 +353,8 @@ def main():
 
     parser.add_argument('--nesterov', action='store_true', default=False,
                         help='whether use nesterov (default: False)')
+
+
     # cuda, seed and logging
     parser.add_argument('--no-cuda', action='store_true', default=
                         False, help='disables CUDA training')
@@ -364,8 +393,6 @@ def main():
 
     if args.test_batch_size is None:
         args.test_batch_size = 1
-
-    #args.lr = args.lr / (4 * len(args.gpu_ids)) * args.batch_size
 
 
     if args.checkname is None:
