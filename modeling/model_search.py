@@ -24,20 +24,47 @@ class AutoDeeplab (nn.Module) :
         f_initial = F * B_1
         half_f_initial = int(f_initial / 2)
 
+        FB1 = F * B_1
+        FB2 = F * B_2
+
+        self.dense_preprocess = [0] * (self._num_layers-2)
+        for i in range(self._num_layers-2):
+            if i == 0:
+                self.dense_preprocess[0]=[]
+                self.dense_preprocess[0].append(ReLUConvBN(FB1, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[0].append(ReLUConvBN(FB1 * 2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[0].append(FactorizedReduce(FB1 * 2, F, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[0].append(DoubleFactorizedReduce(FB1 * 2, F, BatchNorm=BatchNorm, affine=False))
+            elif i == 1:
+                self.dense_preprocess[1]=[]
+                self.dense_preprocess[1].append(ReLUConvBN(FB1, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[1].append(ReLUConvBN(FB1 * 2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[1].append(ReLUConvBN(FB1 * 4, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[1].append(FactorizedReduce(FB1 * 4, F, BatchNorm=BatchNorm, affine=False))
+            elif i <= self.exit_layer:
+                self.dense_preprocess[i]=[]
+                self.dense_preprocess[i].append(ReLUConvBN(FB1, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 4, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 8, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+            else:
+                self.dense_preprocess[i]=[]
+                self.dense_preprocess[i].append(ReLUConvBN(FB2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 4, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 8, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+
         self.stem0 = nn.Sequential(
             nn.Conv2d(3, half_f_initial, 3, stride=2, padding=1),
             BatchNorm(half_f_initial),
-            nn.ReLU ()
         )
         self.stem1 = nn.Sequential(
             nn.Conv2d(half_f_initial, f_initial, 3, stride=2, padding=1),
             BatchNorm(f_initial),
-            nn.ReLU ()
         )
 
-        FB1 = F * B_1
-        FB2 = F * B_2
-        for i in range (self._num_layers) :
+        # build the cells
+        for i in range (self._num_layers):
 
             if i == 0 :
                 cell1 = cell (B_1, half_f_initial,
