@@ -8,20 +8,20 @@ from modeling.operations import *
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 
 class AutoDeeplab (nn.Module) :
-    def __init__(self, num_classes, num_layers, F=8, B_d=4, B_c=5, 
-                 distributed_layer=5, sync_bn=False ,cell=cell_level_search.Cell):
+    def __init__(self, num_classes, num_layers, F=8, B_1=4, B_2=5, 
+                 exit_layer=5, sync_bn=False ,cell=cell_level_search.Cell):
         super(AutoDeeplab, self).__init__()
 
         BatchNorm = SynchronizedBatchNorm2d if sync_bn == True else nn.BatchNorm2d
         self.cells = nn.ModuleList()
         self._num_layers = num_layers
         self._num_classes = num_classes
-        self.B_d = B_d
-        self.B_c = B_c
-        self.distributed_layer = distributed_layer
+        self.B_1 = B_1
+        self.B_2 = B_2
+        self.exit_layer = exit_layer
         self._initialize_alphas_betas ()
 
-        f_initial = F * B_d
+        f_initial = F * B_1
         half_f_initial = int(f_initial / 2)
 
         self.stem0 = nn.Sequential(
@@ -35,30 +35,30 @@ class AutoDeeplab (nn.Module) :
             nn.ReLU ()
         )
 
-        FBD = F * B_d
-        FBC = F * B_c
+        FB1 = F * B_1
+        FB2 = F * B_2
         for i in range (self._num_layers) :
 
             if i == 0 :
-                cell1 = cell (B_d, half_f_initial,
+                cell1 = cell (B_1, half_f_initial,
                               None, f_initial, None,
                               F, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.5)
-                cell2 = cell (B_d, half_f_initial,
+                cell2 = cell (B_1, half_f_initial,
                               f_initial, None, None,
                               F * 2, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.25)
                 self.cells += [cell1]
                 self.cells += [cell2]
             elif i == 1 :
-                cell1 = cell (B_d, f_initial,
-                              None, FBD, FBD * 2,
+                cell1 = cell (B_1, f_initial,
+                              None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_d, f_initial,
-                              FBD, FBD * 2, None,
+                cell2 = cell (B_1, f_initial,
+                              FB1, FB1 * 2, None,
                               F * 2, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.5)
 
-                cell3 = cell (B_d, f_initial,
-                              FBD * 2, None, None,
+                cell3 = cell (B_1, f_initial,
+                              FB1 * 2, None, None,
                               F * 4, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.25)
 
                 self.cells += [cell1]
@@ -66,20 +66,20 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell3]
 
             elif i == 2 :
-                cell1 = cell (B_d, FBD,
-                              None, FBD, FBD * 2,
+                cell1 = cell (B_1, FB1,
+                              None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_d, FBD * 2,
-                              FBD, FBD * 2, FBD * 4,
+                cell2 = cell (B_1, FB1 * 2,
+                              FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_d, FBD * 2,
-                              FBD * 2, FBD * 4, None,
+                cell3 = cell (B_1, FB1 * 2,
+                              FB1 * 2, FB1 * 4, None,
                               F * 4, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.5)
 
-                cell4 = cell (B_d, FBD * 2,
-                              FBD * 4, None, None,
+                cell4 = cell (B_1, FB1 * 2,
+                              FB1 * 4, None, None,
                               F * 8, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.25)
 
                 self.cells += [cell1]
@@ -88,21 +88,21 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell4]
 
             elif i == 3 :
-                cell1 = cell (B_d, FBD,
-                              None, FBD, FBD * 2,
+                cell1 = cell (B_1, FB1,
+                              None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_d, FBD * 2,
-                              FBD, FBD * 2, FBD * 4,
+                cell2 = cell (B_1, FB1 * 2,
+                              FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_d, FBD * 4,
-                              FBD * 2, FBD * 4, FBD * 8,
+                cell3 = cell (B_1, FB1 * 4,
+                              FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
 
-                cell4 = cell (B_d, FBD * 4,
-                              FBD * 4, FBD * 8, None,
+                cell4 = cell (B_1, FB1 * 4,
+                              FB1 * 4, FB1 * 8, None,
                               F * 8, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.5)
 
                 self.cells += [cell1]
@@ -110,21 +110,21 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell3]
                 self.cells += [cell4]
 
-            elif i < distributed_layer :
-                cell1 = cell (B_d, FBD,
-                              None, FBD, FBD * 2,
+            elif i < exit_layer :
+                cell1 = cell (B_1, FB1,
+                              None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_d, FBD * 2,
-                              FBD, FBD * 2, FBD * 4,
+                cell2 = cell (B_1, FB1 * 2,
+                              FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_d, FBD * 4,
-                              FBD * 2, FBD * 4, FBD * 8,
+                cell3 = cell (B_1, FB1 * 4,
+                              FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (B_d, FBD * 8,
-                              FBD * 4, FBD * 8, None,
+                cell4 = cell (B_1, FB1 * 8,
+                              FB1 * 4, FB1 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
                 self.cells += [cell1]
@@ -132,21 +132,21 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell3]
                 self.cells += [cell4]
 
-            elif i == distributed_layer:
-                cell1 = cell (B_d, FBD,
-                              None, FBD, FBD * 2,
+            elif i == exit_layer:
+                cell1 = cell (B_1, FB1,
+                              None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_d, FBD * 2,
-                              FBD, FBD * 2, FBD * 4,
+                cell2 = cell (B_1, FB1 * 2,
+                              FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_d, FBD * 4,
-                              FBD * 2, FBD * 4, FBD * 8,
+                cell3 = cell (B_1, FB1 * 4,
+                              FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (B_d, FBD * 8,
-                              FBD * 4, FBD * 8, None,
+                cell4 = cell (B_1, FB1 * 8,
+                              FB1 * 4, FB1 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
                 self.cells += [cell1]
@@ -154,21 +154,21 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell3]
                 self.cells += [cell4]
 
-            elif i == distributed_layer+1:
-                cell1 = cell (B_c, FBD,
-                              None, FBD, FBD * 2,
+            elif i == exit_layer+1:
+                cell1 = cell (B_2, F * (i-1),
+                              None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_c, FBD * 2,
-                              FBD, FBD * 2, FBD * 4,
+                cell2 = cell (B_2, F * (i-1) * 2,
+                              FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_c, FBD * 4,
-                              FBD * 2, FBD * 4, FBD * 8,
+                cell3 = cell (B_2, F * (i-1) * 4,
+                              FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (B_c, FBD * 8,
-                              FBD * 4, FBD * 8, None,
+                cell4 = cell (B_2, F * (i-1) * 8,
+                              FB1 * 4, FB1 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
                 self.cells += [cell1]
@@ -176,21 +176,21 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell3]
                 self.cells += [cell4]
 
-            elif i == distributed_layer+2:
-                cell1 = cell (B_c, FBD,
-                              None, FBC, FBC * 2,
+            else:
+                cell1 = cell (B_2, F * (i-1),
+                              None, FB2, FB2 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_c, FBD * 2,
-                              FBC, FBC * 2, FBC * 4,
+                cell2 = cell (B_2, F * (i-1) * 2,
+                              FB2, FB2 * 2, FB2 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_c, FBD * 4,
-                              FBC * 2, FBC * 4, FBC * 8,
+                cell3 = cell (B_2, F * (i-1) * 4,
+                              FB2 * 2, FB2 * 4, FB2 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (B_c, FBD * 8,
-                              FBC * 4, FBC * 8, None,
+                cell4 = cell (B_2, F * (i-1) * 8,
+                              FB2 * 4, FB2 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
                 self.cells += [cell1]
@@ -198,63 +198,46 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell3]
                 self.cells += [cell4]
 
-            else :
-                cell1 = cell (B_c, FBC,
-                              None, FBC, FBC * 2,
-                              F, BatchNorm=BatchNorm)
-
-                cell2 = cell (B_c, FBC * 2,
-                              FBC, FBC * 2, FBC * 4,
-                              F * 2, BatchNorm=BatchNorm)
-
-                cell3 = cell (B_c, FBC * 4,
-                              FBC * 2, FBC * 4, FBC * 8,
-                              F * 4, BatchNorm=BatchNorm)
-
-                cell4 = cell (B_c, FBC * 8,
-                              FBC * 4, FBC * 8, None,
-                              F * 8, BatchNorm=BatchNorm)
-
-                self.cells += [cell1]
-                self.cells += [cell2]
-                self.cells += [cell3]
-                self.cells += [cell4]
-
-        self.aspp_device_4 = nn.Sequential (
-            ASPP (FBD, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
+        self.aspp_exit_1_4 = nn.Sequential (
+            ASPP (FB1, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
         )
-        self.aspp_device_8 = nn.Sequential (
-            ASPP (FBD * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm) #96 / 8
+        self.aspp_exit_1_8 = nn.Sequential (
+            ASPP (FB1 * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm) #96 / 8
         )
-        self.aspp_device_16 = nn.Sequential (
-            ASPP (FBD * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) #96 / 16
+        self.aspp_exit_1_16 = nn.Sequential (
+            ASPP (FB1 * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) #96 / 16
         )
-        self.aspp_device_32 = nn.Sequential (
-            ASPP (FBD * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm) #96 / 32
+        self.aspp_exit_1_32 = nn.Sequential (
+            ASPP (FB1 * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm) #96 / 32
         )
 
-
-        self.aspp_4 = nn.Sequential (
-            ASPP (FBC, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
+        self.aspp_exit_2_4 = nn.Sequential (
+            ASPP (FB2, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
         )
-        self.aspp_8 = nn.Sequential (
-            ASPP (FBC * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm) #96 / 8
+        self.aspp_exit_2_8 = nn.Sequential (
+            ASPP (FB2 * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm) #96 / 8
         )
-        self.aspp_16 = nn.Sequential (
-            ASPP (FBC * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) #96 / 16
+        self.aspp_exit_2_16 = nn.Sequential (
+            ASPP (FB2 * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) #96 / 16
         )
-        self.aspp_32 = nn.Sequential (
-            ASPP (FBC * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm) #96 / 32
+        self.aspp_exit_2_32 = nn.Sequential (
+            ASPP (FB2 * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm) #96 / 32
         )
         self._init_weight()
 
     def forward (self, x) :
-        self.level_4 = []
-        self.level_8 = []
-        self.level_16 = []
-        self.level_32 = []
+        level_4 = []
+        level_8 = []
+        level_16 = []
+        level_32 = []
+
+        level_4_dense = []
+        level_8_dense = []
+        level_16_dense = []
+        level_32_dense = []
+
         temp = self.stem0 (x)
-        self.level_4.append (self.stem1 (temp))
+        level_4.append (self.stem1(temp))
 
         count = 0
 
@@ -262,9 +245,9 @@ class AutoDeeplab (nn.Module) :
         # Softmax on alphas and betas
         if torch.cuda.device_count() > 1:
             img_device = torch.device('cuda', x.get_device())
-            normalized_alphas_d = F.softmax(self.alphas_d.to(device=img_device), dim=-1)
-            normalized_alphas_c = F.softmax(self.alphas_c.to(device=img_device), dim=-1)
-            
+            normalized_alphas_1 = F.softmax(self.alphas_1.to(device=img_device), dim=-1)
+            normalized_alphas_2 = F.softmax(self.alphas_2.to(device=img_device), dim=-1)
+
             # normalized_betas[layer][ith node][0 : ➚, 1: ➙, 2 : ➘]
             for layer in range (len(self.betas)):
                 if layer == 0:
@@ -285,8 +268,8 @@ class AutoDeeplab (nn.Module) :
                     normalized_betas[layer][3][:2] = F.softmax (self.betas[layer][3][:2].to(device=img_device), dim=-1)
 
         else:
-            normalized_alphas_d = F.softmax(self.alphas_d, dim=-1)
-            normalized_alphas_c = F.softmax(self.alphas_c, dim=-1)
+            normalized_alphas_1 = F.softmax(self.alphas_1, dim=-1)
+            normalized_alphas_2 = F.softmax(self.alphas_2, dim=-1)
 
             for layer in range (len(self.betas)):
                 if layer == 0:
@@ -309,282 +292,418 @@ class AutoDeeplab (nn.Module) :
         for layer in range (self._num_layers) :
 
             if layer == 0 :
-                level4_new, = self.cells[count] (temp, None, self.level_4[-1], None, normalized_alphas_d)
+                level4_new, = self.cells[count] (temp, None, level_4[-1], None, normalized_alphas_1)
                 count += 1
-                level8_new, = self.cells[count] (temp, self.level_4[-1], None, None, normalized_alphas_d)
+                level8_new, = self.cells[count] (temp, level_4[-1], None, None, normalized_alphas_1)
                 count += 1
 
                 level4_new = normalized_betas[layer][0][1] * level4_new
                 level8_new = normalized_betas[layer][0][2] * level8_new
                 
-                self.level_4.append (level4_new)
-                self.level_8.append (level8_new)
+                level_4.append (level4_new)
+                level_8.append (level8_new)
                 del temp
+                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
+                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
+                level_16_dense.append(self.dense_preprocess[layer][2](level8_new))
+                level_32_dense.append(self.dense_preprocess[layer][3](level8_new))
 
             elif layer == 1 :
-                level4_new_1, level4_new_2 = self.cells[count] (self.level_4[-2],
+                level4_new_1, level4_new_2 = self.cells[count] (level_4[-2],
                                                                 None,
-                                                                self.level_4[-1],
-                                                                self.level_8[-1],
-                                                                normalized_alphas_d)
+                                                                level_4[-1],
+                                                                level_8[-1],
+                                                                normalized_alphas_1)
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
-                level8_new_1, level8_new_2 = self.cells[count] (self.level_4[-2],
-                                                                self.level_4[-1],
-                                                                self.level_8[-1],
+                level8_new_1, level8_new_2 = self.cells[count] (level_4[-2],
+                                                                evel_4[-1],
+                                                                level_8[-1],
                                                                 None,
-                                                                normalized_alphas_d)
+                                                                normalized_alphas_1)
                 count += 1
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2
 
-                level16_new, = self.cells[count] (self.level_4[-2],
-                                                  self.level_8[-1],
+                level16_new, = self.cells[count] (level_4[-2],
+                                                  level_8[-1],
                                                   None,
                                                   None,
-                                                  normalized_alphas_d)
+                                                  normalized_alphas_1)
                 level16_new = normalized_betas[layer][1][2] * level16_new
                 count += 1
 
 
-                self.level_4.append (level4_new)
-                self.level_8.append (level8_new)
-                self.level_16.append (level16_new)
+                level_4.append (level4_new)
+                level_8.append (level8_new)
+                level_16.append (level16_new)
+
+                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
+                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
+                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
+                level_32_dense.append(self.dense_preprocess[layer][3](level16_new))
 
             elif layer == 2 :
-                level4_new_1, level4_new_2 = self.cells[count] (self.level_4[-2],
+                level4_new_1, level4_new_2 = self.cells[count] (level_4[-2],
                                                                 None,
-                                                                self.level_4[-1],
-                                                                self.level_8[-1],
-                                                                normalized_alphas_d)
+                                                                level_4[-1],
+                                                                level_8[-1],
+                                                                normalized_alphas_1)
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
-                                                                              self.level_4[-1],
-                                                                              self.level_8[-1],
-                                                                              self.level_16[-1],
-                                                                              normalized_alphas_d)
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (level_8[-2],
+                                                                              level_4[-1],
+                                                                              level_8[-1],
+                                                                              level_16[-1],
+                                                                              normalized_alphas_1)
                 count += 1
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
-                level16_new_1, level16_new_2 = self.cells[count] (self.level_8[-2],
-                                                                  self.level_8[-1],
-                                                                  self.level_16[-1],
+                level16_new_1, level16_new_2 = self.cells[count] (level_8[-2],
+                                                                  level_8[-1],
+                                                                  level_16[-1],
                                                                   None,
-                                                                  normalized_alphas_d)
+                                                                  normalized_alphas_1)
                 count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2
 
 
-                level32_new, = self.cells[count] (self.level_8[-2],
-                                                  self.level_16[-1],
+                level32_new, = self.cells[count] (level_8[-2],
+                                                  level_16[-1],
                                                   None,
                                                   None,
-                                                  normalized_alphas_d)
+                                                  normalized_alphas_1)
                 level32_new = normalized_betas[layer][2][2] * level32_new
                 count += 1
 
-                self.level_4.append (level4_new)
-                self.level_8.append (level8_new)
-                self.level_16.append (level16_new)
-                self.level_32.append (level32_new)
+                level_4.append (level4_new)
+                level_8.append (level8_new)
+                level_16.append (level16_new)
+                level_32.append (level32_new)
+
+                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
+                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
+                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
+                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
             elif layer == 3 :
-                level4_new_1, level4_new_2 = self.cells[count] (self.level_4[-2],
+                level4_new_1, level4_new_2 = self.cells[count] (level_4[-2],
                                                                 None,
-                                                                self.level_4[-1],
-                                                                self.level_8[-1],
-                                                                normalized_alphas_d)
+                                                                level_4[-1],
+                                                                level_8[-1],
+                                                                normalized_alphas_1)
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
-                                                                              self.level_4[-1],
-                                                                              self.level_8[-1],
-                                                                              self.level_16[-1],
-                                                                              normalized_alphas_d)
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (level_8[-2],
+                                                                              level_4[-1],
+                                                                              level_8[-1],
+                                                                              level_16[-1],
+                                                                              normalized_alphas_1)
                 count += 1
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (self.level_16[-2],
-                                                                                 self.level_8[-1],
-                                                                                 self.level_16[-1],
-                                                                                 self.level_32[-1],
-                                                                                 normalized_alphas_d)
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (level_16[-2],
+                                                                                 level_8[-1],
+                                                                                 level_16[-1],
+                                                                                 level_32[-1],
+                                                                                 normalized_alphas_1)
                 count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (self.level_16[-2],
-                                                                  self.level_16[-1],
-                                                                  self.level_32[-1],
+                level32_new_1, level32_new_2 = self.cells[count] (level_16[-2],
+                                                                  level_16[-1],
+                                                                  level_32[-1],
                                                                   None,
-                                                                  normalized_alphas_d)
+                                                                  normalized_alphas_1)
                 count += 1
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
 
 
-                self.level_4.append (level4_new)
-                self.level_8.append (level8_new)
-                self.level_16.append (level16_new)
-                self.level_32.append (level32_new)
+                level_4.append (level4_new)
+                level_8.append (level8_new)
+                level_16.append (level16_new)
+                level_32.append (level32_new)
 
+                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
+                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
+                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
+                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
-            elif layer < self.distributed_layer :
-                level4_new_1, level4_new_2 = self.cells[count] (self.level_4[-2],
+            elif layer < self.exit_layer :
+                level4_new_1, level4_new_2 = self.cells[count] (level_4[-2],
                                                                 None,
-                                                                self.level_4[-1],
-                                                                self.level_8[-1],
-                                                                normalized_alphas_d)
+                                                                level_4[-1],
+                                                                level_8[-1],
+                                                                normalized_alphas_1)
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
-                                                                              self.level_4[-1],
-                                                                              self.level_8[-1],
-                                                                              self.level_16[-1],
-                                                                              normalized_alphas_d)
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (level_8[-2],
+                                                                              level_4[-1],
+                                                                              level_8[-1],
+                                                                              level_16[-1],
+                                                                              normalized_alphas_1)
                 count += 1
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (self.level_16[-2],
-                                                                                 self.level_8[-1],
-                                                                                 self.level_16[-1],
-                                                                                 self.level_32[-1],
-                                                                                 normalized_alphas_d)
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (level_16[-2],
+                                                                                 level_8[-1],
+                                                                                 level_16[-1],
+                                                                                 level_32[-1],
+                                                                                 normalized_alphas_1)
                 count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (self.level_32[-2],
-                                                                  self.level_16[-1],
-                                                                  self.level_32[-1],
+                level32_new_1, level32_new_2 = self.cells[count] (level_32[-2],
+                                                                  level_16[-1],
+                                                                  level_32[-1],
                                                                   None,
-                                                                  normalized_alphas_d)
+                                                                  normalized_alphas_1)
                 count += 1
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
 
 
-                self.level_4.append (level4_new)
-                self.level_8.append (level8_new)
-                self.level_16.append (level16_new)
-                self.level_32.append (level32_new)
+                level_4.append (level4_new)
+                level_8.append (level8_new)
+                level_16.append (level16_new)
+                level_32.append (level32_new)
 
-            elif layer == self.distributed_layer:
-                level4_new_1, level4_new_2 = self.cells[count] (self.level_4[-2],
+                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
+                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
+                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
+                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
+
+            elif layer == self.exit_layer:
+                level4_new_1, level4_new_2 = self.cells[count] (level_4[-2],
                                                                 None,
-                                                                self.level_4[-1],
-                                                                self.level_8[-1],
-                                                                normalized_alphas_d)
+                                                                level_4[-1],
+                                                                level_8[-1],
+                                                                normalized_alphas_1)
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
                 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
-                                                                              self.level_4[-1],
-                                                                              self.level_8[-1],
-                                                                              self.level_16[-1],
-                                                                              normalized_alphas_d)
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (level_8[-2],
+                                                                              level_4[-1],
+                                                                              level_8[-1],
+                                                                              level_16[-1],
+                                                                              normalized_alphas_1)
                 count += 1
 
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (self.level_16[-2],
-                                                                                 self.level_8[-1],
-                                                                                 self.level_16[-1],
-                                                                                 self.level_32[-1],
-                                                                                 normalized_alphas_d)
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (level_16[-2],
+                                                                                 level_8[-1],
+                                                                                 level_16[-1],
+                                                                                 level_32[-1],
+                                                                                 normalized_alphas_1)
                 count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
                 
-                level32_new_1, level32_new_2 = self.cells[count] (self.level_32[-2],
-                                                                  self.level_16[-1],
-                                                                  self.level_32[-1],
+                level32_new_1, level32_new_2 = self.cells[count] (level_32[-2],
+                                                                  level_16[-1],
+                                                                  level_32[-1],
                                                                   None,
-                                                                  normalized_alphas_d)
+                                                                  normalized_alphas_1)
                 count += 1
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
 
 
-                self.level_4.append (level4_new)
-                self.level_8.append (level8_new)
-                self.level_16.append (level16_new)
-                self.level_32.append (level32_new)
-                device_4_new = self.aspp_device_4(self.level_4[-1])
-                device_8_new = self.aspp_device_8(self.level_8[-1])
-                device_16_new = self.aspp_device_16(self.level_16[-1])
-                device_32_new = self.aspp_device_32(self.level_32[-1])
+                level_4.append (level4_new)
+                level_8.append (level8_new)
+                level_16.append (level16_new)
+                level_32.append (level32_new)
+
+                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
+                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
+                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
+                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
+
+                exit_1_4_new = self.aspp_exit_1_4(level_4[-1])
+                exit_1_8_new = self.aspp_exit_1_8(level_8[-1])
+                exit_1_16_new = self.aspp_exit_1_16(level_16[-1])
+                exit_1_32_new = self.aspp_exit_1_32(level_32[-1])
+
+
+            elif layer == self.exit_layer+1:
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
+                                                                None,
+                                                                level_4[-1],
+                                                                level_8[-1],
+                                                                normalized_alphas_2)
+                count += 1
+                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
+                                                                              level_4[-1],
+                                                                              level_8[-1],
+                                                                              level_16[-1],
+                                                                              normalized_alphas_2)
+                count += 1
+
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
+
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
+                                                                                 level_8[-1],
+                                                                                 level_16[-1],
+                                                                                 level_32[-1],
+                                                                                 normalized_alphas_2)
+                count += 1
+                level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
+
+
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
+                                                                  level_16[-1],
+                                                                  level_32[-1],
+                                                                  None,
+                                                                  normalized_alphas_2)
+                count += 1
+                level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
+
+
+                level_4.append (level4_new)
+                level_8.append (level8_new)
+                level_16.append (level16_new)
+                level_32.append (level32_new)
+
+                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
+                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
+                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
+                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
+
+            elif layer == self.exit_layer+2:
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
+                                                                None,
+                                                                level_4[-1],
+                                                                level_8[-1],
+                                                                normalized_alphas_2)
+                count += 1
+                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
+                                                                              level_4[-1],
+                                                                              level_8[-1],
+                                                                              level_16[-1],
+                                                                              normalized_alphas_2)
+                count += 1
+
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
+
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
+                                                                                 level_8[-1],
+                                                                                 level_16[-1],
+                                                                                 level_32[-1],
+                                                                                 normalized_alphas_2)
+                count += 1
+                level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
+
+
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
+                                                                  level_16[-1],
+                                                                  level_32[-1],
+                                                                  None,
+                                                                  normalized_alphas_2)
+                count += 1
+                level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
+
+
+                level_4.append (level4_new)
+                level_8.append (level8_new)
+                level_16.append (level16_new)
+                level_32.append (level32_new)
+
+                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
+                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
+                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
+                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
             else :
-                level4_new_1, level4_new_2 = self.cells[count] (self.level_4[-2],
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
                                                                 None,
-                                                                self.level_4[-1],
-                                                                self.level_8[-1],
-                                                                normalized_alphas_c)
+                                                                level_4[-1],
+                                                                level_8[-1],
+                                                                normalized_alphas_2)
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
-                                                                              self.level_4[-1],
-                                                                              self.level_8[-1],
-                                                                              self.level_16[-1],
-                                                                              normalized_alphas_c)
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
+                                                                              level_4[-1],
+                                                                              level_8[-1],
+                                                                              level_16[-1],
+                                                                              normalized_alphas_2)
                 count += 1
 
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (self.level_16[-2],
-                                                                                 self.level_8[-1],
-                                                                                 self.level_16[-1],
-                                                                                 self.level_32[-1],
-                                                                                 normalized_alphas_c)
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
+                                                                                 level_8[-1],
+                                                                                 level_16[-1],
+                                                                                 level_32[-1],
+                                                                                 normalized_alphas_2)
                 count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (self.level_32[-2],
-                                                                  self.level_16[-1],
-                                                                  self.level_32[-1],
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
+                                                                  level_16[-1],
+                                                                  level_32[-1],
                                                                   None,
-                                                                  normalized_alphas_c)
+                                                                  normalized_alphas_2)
                 count += 1
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
 
 
-                self.level_4.append (level4_new)
-                self.level_8.append (level8_new)
-                self.level_16.append (level16_new)
-                self.level_32.append (level32_new)
+                level_4.append (level4_new)
+                level_8.append (level8_new)
+                level_16.append (level16_new)
+                level_32.append (level32_new)
 
-            self.level_4 = self.level_4[-2:]
-            self.level_8 = self.level_8[-2:]
-            self.level_16 = self.level_16[-2:]
-            self.level_32 = self.level_32[-2:]
+                if layer < self._num_layers -2:
+                    level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
+                    level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
+                    level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
+                    level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
-        aspp_result_4 = self.aspp_4 (self.level_4[-1])
-        del self.level_4
-        aspp_result_8 = self.aspp_8 (self.level_8[-1])
-        del self.level_8
-        aspp_result_16 = self.aspp_16 (self.level_16[-1])
-        del self.level_16
-        aspp_result_32 = self.aspp_32 (self.level_32[-1])
-        del self.level_32
+            if layer < self.exit_layer:
+                level_4 = level_4[-2:]
+                level_8 = level_8[-2:]
+                level_16 = level_16[-2:]
+                evel_32 = level_32[-2:]
+            else:
+                level_4 = level_4[-1:]
+                level_8 = level_8[-1:]
+                evel_16 = level_16[-1:]
+                level_32 = level_32[-1:]
+
+        exit_2_4_new = self.aspp_exit_2_4 (level_4[-1])
+        del level_4
+        exit_2_8_new = self.aspp_exit_2_8 (level_8[-1])
+        del level_8
+        exit_2_16_new = self.aspp_exit_2_16 (level_16[-1])
+        del level_16
+        exit_2_32_new = self.aspp_exit_2_32 (level_32[-1])
+        del level_32
+
         upsample = nn.Upsample(size=x.size()[2:], mode='bilinear', align_corners=True)
-        aspp_result_4 = upsample (aspp_result_4)
-        aspp_result_8 = upsample (aspp_result_8)
-        aspp_result_16 = upsample (aspp_result_16)
-        aspp_result_32 = upsample (aspp_result_32)
+        exit_2_4_new = upsample (exit_2_4_new)
+        exit_2_8_new = upsample (exit_2_8_new)
+        exit_2_16_new = upsample (exit_2_16_new)
+        exit_2_32_new = upsample (exit_2_32_new)
 
-        device_4_new = upsample(device_4_new)
-        device_8_new = upsample(device_8_new)
-        device_16_new = upsample(device_16_new)
-        device_32_new = upsample(device_32_new)
+        exit_1_4_new = upsample(exit_1_4_new)
+        exit_1_8_new = upsample(exit_1_8_new)
+        exit_1_16_new = upsample(exit_16_new)
+        exit_1_32_new = upsample(exit_1_32_new)
 
-        sum_device_feature_map = device_4_new + device_8_new + device_16_new + device_32_new
-        del device_4_new, device_8_new, device_16_new, device_32_new
-        sum_feature_map = aspp_result_4 + aspp_result_8 + aspp_result_16 + aspp_result_32
+        exit_1_sum_feature_map = exit_1_4_new + exit_1_8_new + exit_1_16_new + exit_1_32_new
+        del exit_1_4_new, exit_1_8_new, exit_1_16_new, exit_1_32_new
 
-        return sum_device_feature_map, sum_feature_map
+        exit_2_sum_feature_map = aspp_result_4 + aspp_result_8 + aspp_result_16 + aspp_result_32
+
+        return exit_1_sum_feature_map, exit_2_sum_feature_map
 
     def _init_weight(self):
         for m in self.modules():
@@ -601,21 +720,21 @@ class AutoDeeplab (nn.Module) :
                     m.bias.data.zero_()
 
     def _initialize_alphas_betas(self):
-        k_d = sum(1 for i in range(self.B_d) for n in range(2+i))
-        k_c = sum(1 for i in range(self.B_c) for n in range(2+i))
+        k_1 = sum(1 for i in range(self.B_1) for n in range(2+i))
+        k_2 = sum(1 for i in range(self.B_2) for n in range(2+i))
         num_ops = len(PRIMITIVES)
-        alphas_d = torch.tensor (1e-3*torch.randn(k_d, num_ops).cuda(), requires_grad=True)
-        alphas_c = torch.tensor (1e-3*torch.randn(k_c, num_ops).cuda(), requires_grad=True)
+        alphas_1 = torch.tensor (1e-3*torch.randn(k_1, num_ops).cuda(), requires_grad=True)
+        alphas_2 = torch.tensor (1e-3*torch.randn(k_2, num_ops).cuda(), requires_grad=True)
         betas = torch.tensor (1e-3*torch.randn(12, 4, 3).cuda(), requires_grad=True)
 
         self._arch_parameters = [
-            alphas_d,
-            alphas_c,
+            alphas_1,
+            alphas_2,
             betas,
             ]
         self._arch_param_names = [
-            'alphas_d',
-            'alphas_c',
+            'alphas_1',
+            'alphas_2',
             'betas',
             ]
 

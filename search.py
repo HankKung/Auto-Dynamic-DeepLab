@@ -63,7 +63,7 @@ class Trainer(object):
 
         # Define network
         model = AutoDeeplab (num_classes=self.nclass, num_layers=12, F=self.args.filter_multiplier,
-                             B_c=self.args.B_c, B_d=self.args.B_d, distributed_layer=5, sync_bn=args.sync_bn)
+                             B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
                 args.lr,
@@ -287,8 +287,8 @@ def main():
     parser.add_argument('--autodeeplab', type=str, default='search',
                         choices=['search', 'train'])
     parser.add_argument('--filter_multiplier', type=int, default=8)
-    parser.add_argument('--B_c', type=int, default=5)
-    parser.add_argument('--B_d', type=int, default=5)
+    parser.add_argument('--B_2', type=int, default=5)
+    parser.add_argument('--B_1', type=int, default=5)
 
 
     # Training Setting
