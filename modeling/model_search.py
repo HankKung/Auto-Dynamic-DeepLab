@@ -27,32 +27,32 @@ class AutoDeeplab (nn.Module) :
         FB1 = F * B_1
         FB2 = F * B_2
 
-        self.dense_preprocess = [0] * (self._num_layers-2)
+        self.dense_preprocess = nn.ModuleList()
         for i in range(self._num_layers-2):
             if i == 0:
-                self.dense_preprocess[0]=[]
+                self.dense_preprocess.append(nn.ModuleList())
                 self.dense_preprocess[0].append(ReLUConvBN(FB1, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[0].append(ReLUConvBN(FB1 * 2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[0].append(FactorizedReduce(FB1 * 2, F, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[0].append(DoubleFactorizedReduce(FB1 * 2, F, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[0].append(ReLUConvBN(FB1 * 2, F * 2, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[0].append(FactorizedReduce(FB1 * 2, F * 4, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[0].append(DoubleFactorizedReduce(FB1 * 2, F * 8, BatchNorm=BatchNorm, affine=False))
             elif i == 1:
-                self.dense_preprocess[1]=[]
+                self.dense_preprocess.append(nn.ModuleList())
                 self.dense_preprocess[1].append(ReLUConvBN(FB1, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[1].append(ReLUConvBN(FB1 * 2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[1].append(ReLUConvBN(FB1 * 4, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[1].append(FactorizedReduce(FB1 * 4, F, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[1].append(ReLUConvBN(FB1 * 2, F * 2, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[1].append(ReLUConvBN(FB1 * 4, F * 4, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[1].append(FactorizedReduce(FB1 * 4, F * 8, BatchNorm=BatchNorm, affine=False))
             elif i <= self.exit_layer:
-                self.dense_preprocess[i]=[]
+                self.dense_preprocess.append(nn.ModuleList())
                 self.dense_preprocess[i].append(ReLUConvBN(FB1, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 4, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 8, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 2, F * 2, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 4, F * 4, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 8, F * 8, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
             else:
-                self.dense_preprocess[i]=[]
+                self.dense_preprocess.append(nn.ModuleList())
                 self.dense_preprocess[i].append(ReLUConvBN(FB2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 4, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 8, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 2, F * 2, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 4, F * 4, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
+                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 8, F * 8, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
 
         self.stem0 = nn.Sequential(
             nn.Conv2d(3, half_f_initial, 3, stride=2, padding=1),
@@ -115,22 +115,22 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell4]
 
             elif i == 3 :
-                cell1 = cell (B_1, FB1,
+                cell1 = cell (B_1, F * (i-1),
                               None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_1, FB1 * 2,
+                cell2 = cell (B_1, F * (i-1) * 2,
                               FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_1, FB1 * 4,
+                cell3 = cell (B_1, F * (i-1) * 4,
                               FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
 
-                cell4 = cell (B_1, FB1 * 4,
+                cell4 = cell (B_1, F * (i-1) * 8,
                               FB1 * 4, FB1 * 8, None,
-                              F * 8, BatchNorm=BatchNorm, pre_preprocess_sample_rate=0.5)
+                              F * 8, BatchNorm=BatchNorm)
 
                 self.cells += [cell1]
                 self.cells += [cell2]
@@ -138,19 +138,19 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell4]
 
             elif i < exit_layer :
-                cell1 = cell (B_1, FB1,
+                cell1 = cell (B_1, F * (i-1),
                               None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_1, FB1 * 2,
+                cell2 = cell (B_1, F * (i-1) * 2,
                               FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_1, FB1 * 4,
+                cell3 = cell (B_1, F * (i-1) * 4,
                               FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (B_1, FB1 * 8,
+                cell4 = cell (B_1, F * (i-1) * 8,
                               FB1 * 4, FB1 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
@@ -160,19 +160,19 @@ class AutoDeeplab (nn.Module) :
                 self.cells += [cell4]
 
             elif i == exit_layer:
-                cell1 = cell (B_1, FB1,
+                cell1 = cell (B_1, F * (i-1),
                               None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_1, FB1 * 2,
+                cell2 = cell (B_1, F * (i-1) * 2,
                               FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_1, FB1 * 4,
+                cell3 = cell (B_1, F * (i-1) * 4,
                               FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (B_1, FB1 * 8,
+                cell4 = cell (B_1, F * (i-1) * 8,
                               FB1 * 4, FB1 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
@@ -345,7 +345,7 @@ class AutoDeeplab (nn.Module) :
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
                 level8_new_1, level8_new_2 = self.cells[count] (level_4[-2],
-                                                                evel_4[-1],
+                                                                level_4[-1],
                                                                 level_8[-1],
                                                                 None,
                                                                 normalized_alphas_1)
@@ -415,7 +415,7 @@ class AutoDeeplab (nn.Module) :
                 level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
             elif layer == 3 :
-                level4_new_1, level4_new_2 = self.cells[count] (level_4[-2],
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
                                                                 None,
                                                                 level_4[-1],
                                                                 level_8[-1],
@@ -423,7 +423,7 @@ class AutoDeeplab (nn.Module) :
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (level_8[-2],
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
@@ -431,7 +431,7 @@ class AutoDeeplab (nn.Module) :
                 count += 1
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (level_16[-2],
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
@@ -440,7 +440,7 @@ class AutoDeeplab (nn.Module) :
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (level_16[-2],
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
                                                                   level_16[-1],
                                                                   level_32[-1],
                                                                   None,
@@ -460,7 +460,7 @@ class AutoDeeplab (nn.Module) :
                 level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
             elif layer < self.exit_layer :
-                level4_new_1, level4_new_2 = self.cells[count] (level_4[-2],
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
                                                                 None,
                                                                 level_4[-1],
                                                                 level_8[-1],
@@ -468,7 +468,7 @@ class AutoDeeplab (nn.Module) :
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (level_8[-2],
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
@@ -476,7 +476,7 @@ class AutoDeeplab (nn.Module) :
                 count += 1
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (level_16[-2],
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
@@ -485,7 +485,7 @@ class AutoDeeplab (nn.Module) :
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (level_32[-2],
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
                                                                   level_16[-1],
                                                                   level_32[-1],
                                                                   None,
@@ -505,7 +505,7 @@ class AutoDeeplab (nn.Module) :
                 level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
             elif layer == self.exit_layer:
-                level4_new_1, level4_new_2 = self.cells[count] (level_4[-2],
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
                                                                 None,
                                                                 level_4[-1],
                                                                 level_8[-1],
@@ -513,7 +513,7 @@ class AutoDeeplab (nn.Module) :
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
                 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (level_8[-2],
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
@@ -522,7 +522,7 @@ class AutoDeeplab (nn.Module) :
 
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (level_16[-2],
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
@@ -530,7 +530,7 @@ class AutoDeeplab (nn.Module) :
                 count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
                 
-                level32_new_1, level32_new_2 = self.cells[count] (level_32[-2],
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
                                                                   level_16[-1],
                                                                   level_32[-1],
                                                                   None,
@@ -647,6 +647,47 @@ class AutoDeeplab (nn.Module) :
                 level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
                 level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
+            elif layer == self._num_layers-1:
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense, dim=1),
+                                                                None,
+                                                                level_4[-1],
+                                                                level_8[-1],
+                                                                normalized_alphas_2)
+                count += 1
+                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense, dim=1),
+                                                                              level_4[-1],
+                                                                              level_8[-1],
+                                                                              level_16[-1],
+                                                                              normalized_alphas_2)
+                count += 1
+
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
+
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense, dim=1),
+                                                                                 level_8[-1],
+                                                                                 level_16[-1],
+                                                                                 level_32[-1],
+                                                                                 normalized_alphas_2)
+                count += 1
+                level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
+
+
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense, dim=1),
+                                                                  level_16[-1],
+                                                                  level_32[-1],
+                                                                  None,
+                                                                  normalized_alphas_2)
+                count += 1
+                level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
+
+
+                level_4.append (level4_new)
+                level_8.append (level8_new)
+                level_16.append (level16_new)
+                level_32.append (level32_new)
+
             else :
                 level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
                                                                 None,
@@ -722,13 +763,13 @@ class AutoDeeplab (nn.Module) :
 
         exit_1_4_new = upsample(exit_1_4_new)
         exit_1_8_new = upsample(exit_1_8_new)
-        exit_1_16_new = upsample(exit_16_new)
+        exit_1_16_new = upsample(exit_1_16_new)
         exit_1_32_new = upsample(exit_1_32_new)
 
         exit_1_sum_feature_map = exit_1_4_new + exit_1_8_new + exit_1_16_new + exit_1_32_new
         del exit_1_4_new, exit_1_8_new, exit_1_16_new, exit_1_32_new
 
-        exit_2_sum_feature_map = aspp_result_4 + aspp_result_8 + aspp_result_16 + aspp_result_32
+        exit_2_sum_feature_map = exit_2_4_new + exit_2_8_new + exit_2_16_new + exit_2_32_new
 
         return exit_1_sum_feature_map, exit_2_sum_feature_map
 
