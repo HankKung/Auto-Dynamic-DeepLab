@@ -1,7 +1,7 @@
-# Distributed-AutoDeepLab
+# Dynamic-AutoDeepLab
 
-Distributed Auto-DeepLab perform two stage paradigm by firstly searching for the architecture, then deriving the searched architecture. Secondly, train the weights of model from scratch. 
-## Distributed Neural Architecture Search
+Dynamic Auto-DeepLab perform two stage paradigm by firstly searching for the architecture, then deriving the searched architecture. Secondly, train the weights of model from scratch. 
+## Dynamic Neural Architecture Search
 
 **We conduct the architecture on Cityscapes**
 
