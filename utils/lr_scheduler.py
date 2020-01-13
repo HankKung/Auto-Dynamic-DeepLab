@@ -54,7 +54,7 @@ class LR_Scheduler(object):
         else:
             raise NotImplemented
         # warm up lr schedule
-        if self.min_lr is not None and self.mode != 'cos':
+        if self.min_lr is not None:
             if lr < self.min_lr:
                 lr = self.min_lr
         if self.warmup_iters > 0 and T < self.warmup_iters:
