@@ -11,7 +11,7 @@ from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
-from modeling.new_model import *
+from modeling.dense_model import *
 from torchviz import make_dot, make_dot_from_trace
 
 APEX_AVAILABLE = False
@@ -24,6 +24,7 @@ class trainNew(object):
         # Define Saver
         self.saver = Saver(args)
         self.saver.save_experiment_config()
+
         # Define Tensorboard Summary
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
@@ -43,9 +44,6 @@ class trainNew(object):
         new_network_arch = np.load(network_path_space)
         
         if args.network == 'dist':
-#            new_network_arch = [0, 1, 2, 3, 2, 2, 1, 0, 1, 2, 3, 2]
-#            new_network_arch = [1, 0, 0, 1, 2, 3, 2, 3, 3, 2, 2, 3]
-#            new_network_arch = [1, 2, 3, 2, 3, 2, 1, 2, 1, 2, 1, 2]
             new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
             args.B_1=4
             low_level_layer = 1
@@ -66,11 +64,10 @@ class trainNew(object):
             cell=np.int_(cell)
             new_cell_arch_1 = cell
             new_cell_arch_2 = cell      
-            args.B_1=5
             low_level_layer = 2
 
         # Define network
-        model = new_cloud_Model(new_network_arch,
+        model = Model_2(new_network_arch,
                                 new_cell_arch_1,
                                 new_cell_arch_2,
                                 self.nclass,
@@ -168,8 +165,6 @@ class trainNew(object):
             train_loss += loss.item()
             if i % 50 == 0:
                 tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
-            # if i %50 == 0:
-            #     self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
 
             del loss_1
             del loss_2
@@ -202,6 +197,7 @@ class trainNew(object):
             target_show = target
             pred_1 = torch.argmax(output_1, axis=1)
             pred_2 = torch.argmax(output_2, axis=1)
+
             # Add batch sample into evaluator
             self.evaluator_1.add_batch(target, pred_1)
             self.evaluator_2.add_batch(target, pred_2)
@@ -233,15 +229,11 @@ class trainNew(object):
             }, is_best)
 
 def main():
-    parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
+    parser = argparse.ArgumentParser(description="Dynamic DeepLab Training")
 
     ## model setting
-    parser.add_argument('--network', type=str, default='dist',
-                        choices=['dist', 'autodeeplab'],
-                        help='backbone name (default: resnet)')
-    parser.add_argument('--backbone', type=str, default='resnet',
-                        choices=['resnet', 'xception', 'drn', 'mobilenet', 'autodeeplab'],
-                        help='backbone name (default: resnet)')
+    parser.add_argument('--network', type=str, default='searched_dense',
+                        choices=['searched_dense', 'searched_baseline', 'autodeeplab'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
     parser.add_argument('--F_2', type=int, default=20)
     parser.add_argument('--F_1', type=int, default=20)
@@ -267,44 +259,32 @@ def main():
     parser.add_argument('--loss-type', type=str, default='ce',
                         choices=['ce', 'focal'],
                         help='loss func type (default: ce)')
-    parser.add_argument('--epochs', type=int, default=None, metavar='N',
-                        help='number of epochs to train (default: auto)')
-    parser.add_argument('--start_epoch', type=int, default=0,
-                        metavar='N', help='start epochs (default:0)')
-    parser.add_argument('--batch-size', type=int, default=None,
-                        metavar='N', help='input batch size for \
-                                training (default: auto)')
-    parser.add_argument('--test-batch-size', type=int, default=None,
-                        metavar='N', help='input batch size for \
-                                testing (default: auto)')
-    parser.add_argument('--use-balanced-weights', action='store_true', default=False,
-                        help='whether to use balanced weights (default: False)')
+    parser.add_argument('--epochs', type=int, default=None, metavar='N')
+    parser.add_argument('--start_epoch', type=int, default=0)
+    parser.add_argument('--batch-size', type=int, default=None, metavar='N')
+    parser.add_argument('--test-batch-size', type=int, default=None, metavar='N')
+    parser.add_argument('--use-balanced-weights', action='store_true', default=False)
 
 
     # optimizer params
-    parser.add_argument('--lr', type=float, default=None, metavar='LR',
-                        help='learning rate (default: auto)')
-    parser.add_argument('--min_lr', type=float, default=0.000001) #TODO: CHECK THAT THEY EVEN DO THIS FOR THE MODEL IN THE PAPER
+    parser.add_argument('--lr', type=float, default=None, metavar='LR')
+    parser.add_argument('--min_lr', type=float, default=0)
     parser.add_argument('--lr-scheduler', type=str, default='poly',
-                        choices=['poly', 'step', 'cos'],
-                        help='lr scheduler mode: (default: poly)')
-    parser.add_argument('--momentum', type=float, default=0.9,
-                        metavar='M', help='momentum (default: 0.9)')
+                        choices=['poly', 'step', 'cos'])
+    parser.add_argument('--momentum', type=float, default=0.9, metavar='M')
     parser.add_argument('--clean-module', type=int, default=0)
     parser.add_argument('--weight-decay', type=float, default=4e-5,
-                        metavar='M', help='w-decay (default: 1e-4)')
+                        metavar='M', help='w-decay (default: 4e-5)')
     parser.add_argument('--nesterov', action='store_true', default=False,
                         help='whether use nesterov (default: False)')
 
 
     # cuda, seed and logging
-    parser.add_argument('--no-cuda', action='store_true', default=
-                        False, help='disables CUDA training')
+    parser.add_argument('--no-cuda', action='store_true', default=False)
     parser.add_argument('--gpu-ids', type=str, default='0',
                         help='use which gpu to train, must be a \
                         comma-separated list of integers only (default=0)')
-
-    parser.add_argument('--seed', type=int, default=2, metavar='S',
+    parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
 
 
@@ -344,8 +324,8 @@ def main():
         args.test_batch_size = 1
 
     if args.checkname is None:
-        args.checkname = 'deeplab-'+str(args.backbone)
-        
+        args.checkname = 'deeplab-'+str(args.network)
+
     print(args)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
