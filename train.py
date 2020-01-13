@@ -33,12 +33,12 @@ class trainNew(object):
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
-        cell_path_d = os.path.join(args.saved_arch_path, 'genotype_device.npy')
-        cell_path_c = os.path.join(args.saved_arch_path, 'genotype_cloud.npy')
+        cell_path_1 = os.path.join(args.saved_arch_path, 'genotype_device.npy')
+        cell_path_2 = os.path.join(args.saved_arch_path, 'genotype_cloud.npy')
         network_path_space = os.path.join(args.saved_arch_path, 'network_path_space.npy')
 
-        new_cell_arch_d = np.load(cell_path_d)
-        new_cell_arch_c = np.load(cell_path_c)
+        new_cell_arch_1 = np.load(cell_path_1)
+        new_cell_arch_2 = np.load(cell_path_2)
  
         new_network_arch = np.load(network_path_space)
         
@@ -47,7 +47,7 @@ class trainNew(object):
 #            new_network_arch = [1, 0, 0, 1, 2, 3, 2, 3, 3, 2, 2, 3]
 #            new_network_arch = [1, 2, 3, 2, 3, 2, 1, 2, 1, 2, 1, 2]
             new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
-            args.B_d=4
+            args.B_1=4
             low_level_layer = 1
 
         elif args.network == 'autodeeplab':
@@ -64,15 +64,15 @@ class trainNew(object):
             cell[8] = [19, 7]
             cell[9] = [18, 5]
             cell=np.int_(cell)
-            new_cell_arch_d = cell
-            new_cell_arch_c = cell      
-            args.B_d=5
+            new_cell_arch_1 = cell
+            new_cell_arch_2 = cell      
+            args.B_1=5
             low_level_layer = 2
 
         # Define network
         model = new_cloud_Model(new_network_arch,
-                                new_cell_arch_d,
-                                new_cell_arch_c,
+                                new_cell_arch_1,
+                                new_cell_arch_2,
                                 self.nclass,
                                 args,
                                 low_level_layer)
@@ -99,8 +99,8 @@ class trainNew(object):
         self.model, self.optimizer = model, optimizer
 
         # Define Evaluator
-        self.evaluator_device = Evaluator(self.nclass)
-        self.evaluator_cloud = Evaluator(self.nclass)
+        self.evaluator_1 = Evaluator(self.nclass)
+        self.evaluator_2 = Evaluator(self.nclass)
         # Define lr scheduler
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                       args.epochs, len(self.train_loader)) #TODO: use min_lr ?
@@ -157,11 +157,11 @@ class trainNew(object):
                 image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            device_output, cloud_output = self.model(image)
+            output_1, output_2 = self.model(image)
             
-            device_loss = self.criterion(device_output, target)
-            cloud_loss = self.criterion(cloud_output, target)
-            loss = (device_loss + cloud_loss)/2
+            loss_1 = self.criterion(output_1, target)
+            loss_2 = self.criterion(output_2, target)
+            loss = (loss_1 + loss_2)/2
             loss.backward()
 
             self.optimizer.step()
@@ -171,19 +171,19 @@ class trainNew(object):
             # if i %50 == 0:
             #     self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
 
-            del cloud_loss
-            del device_loss
+            del loss_1
+            del loss_2
             del loss
-            del device_output
-            del cloud_output
+            del output_1
+            del output_2
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
 
     def validation(self, epoch):
         self.model.eval()
-        self.evaluator_device.reset()
-        self.evaluator_cloud.reset()
+        self.evaluator_1.reset()
+        self.evaluator_2.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
         for i, sample in enumerate(tbar):
@@ -192,33 +192,36 @@ class trainNew(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                device_output, cloud_output = self.model(image)
-            device_loss = self.criterion(device_output, target)
-            cloud_loss = self.criterion(cloud_output, target)
-            loss = (device_loss + cloud_loss) /2
+                output_1, output_2 = self.model(image)
+            loss_1 = self.criterion(output_1, target)
+            loss_2 = self.criterion(output_2, target)
+            loss = (loss_1 + loss_2) /2
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
 
             target_show = target
-            pred_d = torch.argmax(device_output, axis=1)
-            pred_c = torch.argmax(cloud_output, axis=1)
+            pred_1 = torch.argmax(output_1, axis=1)
+            pred_2 = torch.argmax(output_2, axis=1)
             # Add batch sample into evaluator
-            self.evaluator_device.add_batch(target, pred_d)
-            self.evaluator_cloud.add_batch(target, pred_c)
+            self.evaluator_1.add_batch(target, pred_1)
+            self.evaluator_2.add_batch(target, pred_2)
+            if epoch//100 == i:
+                global_step = epoch
+                self.summary.visualize_image(self.writer, self.args.dataset, image, target_show, output_2, global_step)
 
-        mIoU_d = self.evaluator_device.Mean_Intersection_over_Union()
-        mIoU_c = self.evaluator_cloud.Mean_Intersection_over_Union()
+        mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
+        mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
 
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
-        self.writer.add_scalar('val/device/mIoU', mIoU_d, epoch)
-        self.writer.add_scalar('val/cloud/mIoU', mIoU_c, epoch)
+        self.writer.add_scalar('val/classifier_1/mIoU', mIoU_1, epoch)
+        self.writer.add_scalar('val/classifier_2/mIoU', mIoU_2, epoch)
 
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.test_batch_size + image.data.shape[0]))
-        print("device_mIoU:{}, cloud_mIoU: {}".format(mIoU_d, mIoU_c))
+        print("classifier_1_mIoU:{}, classifier_2_mIoU: {}".format(mIoU_1, mIoU_2))
         print('Loss: %.3f' % test_loss)
 
-        new_pred = (mIoU_d + mIoU_c)/2
+        new_pred = (mIoU_1 + mIoU_2)/2
         if new_pred > self.best_pred:
             is_best = True
             self.best_pred = new_pred
@@ -239,11 +242,11 @@ def main():
     parser.add_argument('--backbone', type=str, default='resnet',
                         choices=['resnet', 'xception', 'drn', 'mobilenet', 'autodeeplab'],
                         help='backbone name (default: resnet)')
-    parser.add_argument('--device_num_layers', type=int, default=6)
-    parser.add_argument('--F_c', type=int, default=20)
-    parser.add_argument('--F_d', type=int, default=20)
-    parser.add_argument('--B_c', type=int, default=5)
-    parser.add_argument('--B_d', type=int, default=4)
+    parser.add_argument('--num_model_1_layers', type=int, default=6)
+    parser.add_argument('--F_2', type=int, default=20)
+    parser.add_argument('--F_1', type=int, default=20)
+    parser.add_argument('--B_2', type=int, default=5)
+    parser.add_argument('--B_1', type=int, default=5)
 
 
     ## dataset config
@@ -252,10 +255,7 @@ def main():
                         help='dataset name (default: pascal)')
     parser.add_argument('--workers', type=int, default=4,
                         metavar='N', help='dataloader threads')
-    parser.add_argument('--crop_size', type=int, default=320,
-                        help='crop image size')
-    parser.add_argument('--resize', type=int, default=512,
-                        help='resize image size')
+
 
     # training config
     parser.add_argument('--autodeeplab', type=str, default='train',
@@ -345,6 +345,7 @@ def main():
 
     if args.checkname is None:
         args.checkname = 'deeplab-'+str(args.backbone)
+        
     print(args)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)

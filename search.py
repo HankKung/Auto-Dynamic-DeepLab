@@ -266,8 +266,8 @@ class Trainer(object):
             print('folder path error')
 
         network_path_filename = os.path.join(dir_name,'network_path')
-        genotype_filename_d = os.path.join(dir_name, 'genotype_device')
-        genotype_filename_c = os.path.join(dir_name, 'genotype_cloud')
+        genotype_filename_d = os.path.join(dir_name, 'genotype_1')
+        genotype_filename_c = os.path.join(dir_name, 'genotype_2')
 
         np.save(network_path_filename, network_path)
         np.save(genotype_filename_d, genotype_d)
@@ -392,7 +392,7 @@ def main():
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
-        if epoch>74 and not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
+        if epoch >  trainer.args.epochs - 10 and not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
 
     trainer.writer.close()
