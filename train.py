@@ -98,9 +98,10 @@ class trainNew(object):
         # Define Evaluator
         self.evaluator_1 = Evaluator(self.nclass)
         self.evaluator_2 = Evaluator(self.nclass)
+
         # Define lr scheduler
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
-                                      args.epochs, len(self.train_loader)) #TODO: use min_lr ?
+                                      args.epochs, len(self.train_loader))
 
         # Using cuda
         if args.cuda:
@@ -171,6 +172,7 @@ class trainNew(object):
             del loss
             del output_1
             del output_2
+            
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)

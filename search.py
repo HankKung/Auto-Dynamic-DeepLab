@@ -269,7 +269,7 @@ class Trainer(object):
         genotype_filename_d = os.path.join(dir_name, 'genotype_1')
         genotype_filename_c = os.path.join(dir_name, 'genotype_2')
 
-        np.save(network_path_filename, network_path)
+        np.save(network_path_filename, result_paths)
         np.save(genotype_filename_d, genotype_d)
         np.save(genotype_filename_c, genotype_c)
         

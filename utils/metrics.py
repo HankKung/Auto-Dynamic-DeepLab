@@ -20,7 +20,7 @@ class Evaluator(object):
                     torch.sum(self.confusion_matrix, axis=1) + torch.sum(self.confusion_matrix, axis=0) -
                     torch.diag(self.confusion_matrix))
         MIoU = self.torch_nanmean(MIoU)
-        return MIoU
+        return MIoU.item()
 
     def Frequency_Weighted_Intersection_over_Union(self):
         freq = torch.sum(self.confusion_matrix, axis=1) / torch.sum(self.confusion_matrix)
