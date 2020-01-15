@@ -157,7 +157,7 @@ class Trainer(object):
                 image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            device_output, cloud_output = self.model(image)
+            output_1, output_2 = self.model(image)
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
             loss = (loss_1 + loss_2)/2
@@ -201,7 +201,7 @@ class Trainer(object):
     def validation(self, epoch):
         self.model.eval()
         self.evaluator_1.reset()
-        self.evaluator_2loud.reset()
+        self.evaluator_2.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
 
@@ -213,7 +213,7 @@ class Trainer(object):
                 output_1, output_2 = self.model(image)
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
-            loss = (device_loss + cloud_loss)/2
+            loss = (loss_1 + loss_2)/2
             test_loss += loss.item()
 
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
@@ -223,7 +223,7 @@ class Trainer(object):
 
             # Add batch sample into evaluator
             self.evaluator_1.add_batch(target, output_1)
-            self.evaluator_2loud.add_batch(target, output_2)
+            self.evaluator_2.add_batch(target, output_2)
 
         mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
         mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
