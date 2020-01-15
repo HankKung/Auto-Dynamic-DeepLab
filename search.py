@@ -78,8 +78,8 @@ class Trainer(object):
                                                     weight_decay=args.arch_weight_decay)
 
         # Define Evaluator
-        self.evaluator = Evaluator(self.nclass)
-        self.evaluator_cloud = Evaluator(self.nclass)
+        self.evaluator_1 = Evaluator(self.nclass)
+        self.evaluator_2 = Evaluator(self.nclass)
         # Define lr scheduler
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                       args.epochs, len(self.train_loaderA), min_lr=args.min_lr)
@@ -158,9 +158,9 @@ class Trainer(object):
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             device_output, cloud_output = self.model(image)
-            loss_device = self.criterion(device_output, target)
-            loss_cloud = self.criterion(cloud_output, target)
-            loss = (loss_device + loss_cloud)/2
+            loss_1 = self.criterion(output_1, target)
+            loss_2 = self.criterion(output_2, target)
+            loss = (loss_1 + loss_2)/2
 
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -177,11 +177,11 @@ class Trainer(object):
                     image_search, target_search = image_search.cuda(), target_search.cuda()
 
                 self.architect_optimizer.zero_grad()
-                device_output_search, cloud_output_search = self.model(image_search)
+                output_search_1, output_search_2 = self.model(image_search)
 
-                device_arch_loss = self.criterion(device_output_search, target_search)
-                cloud_arch_loss = self.criterion(cloud_output_search, target_search)
-                arch_loss = (device_arch_loss + cloud_arch_loss)/2
+                arch_loss_1 = self.criterion(output_search_1, target_search)
+                arch_loss_2 = self.criterion(output_search_2, target_search)
+                arch_loss = (arch_loss_1 + arch_loss_2)/2
                 search_loss += arch_loss.item()
 
                 if self.use_amp:
@@ -200,8 +200,8 @@ class Trainer(object):
 
     def validation(self, epoch):
         self.model.eval()
-        self.evaluator.reset()
-        self.evaluator_cloud.reset()
+        self.evaluator_1.reset()
+        self.evaluator_2loud.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
 
@@ -210,32 +210,32 @@ class Trainer(object):
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
-                device_output, cloud_output = self.model(image)
-            device_loss = self.criterion(device_output, target)
-            cloud_loss = self.criterion(cloud_output, target)
+                output_1, output_2 = self.model(image)
+            loss_1 = self.criterion(output_1, target)
+            loss_2 = self.criterion(output_2, target)
             loss = (device_loss + cloud_loss)/2
             test_loss += loss.item()
 
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
 
-            device_output = torch.argmax(device_output, axis=1)
-            cloud_output = torch.argmax(cloud_output, axis=1)
+            output_1 = torch.argmax(output_1, axis=1)
+            output_2 = torch.argmax(output_2, axis=1)
 
             # Add batch sample into evaluator
-            self.evaluator.add_batch(target, device_output)
-            self.evaluator_cloud.add_batch(target, cloud_output)
+            self.evaluator_1.add_batch(target, output_1)
+            self.evaluator_2loud.add_batch(target, output_2)
 
-        mIoU = self.evaluator.Mean_Intersection_over_Union()
-        mIoU_cloud = self.evaluator_cloud.Mean_Intersection_over_Union()
+        mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
+        mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
         # FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
-        self.writer.add_scalar('val/device/mIoU', mIoU, epoch)
-        self.writer.add_scalar('val/cloud/mIoU', mIoU_cloud, epoch)
+        self.writer.add_scalar('val/classifier_1/mIoU', mIoU_1, epoch)
+        self.writer.add_scalar('val/classifier_2/mIoU', mIoU_2, epoch)
 
         print('Validation:')
-        print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
+        print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.test_batch_size + image.data.shape[0]))
         print('Loss: %.3f' % test_loss)
-        new_pred = (mIoU + mIoU_cloud)/2
+        new_pred = (mIoU_1 + mIoU_2)/2
         if new_pred > self.best_pred:
             is_best = True
             self.best_pred = new_pred
@@ -251,13 +251,13 @@ class Trainer(object):
             }, is_best)
 
         ## decode the arch
-        decoder = Decoder(self.model.alphas_d,
-                          self.model.alphas_c,
+        decoder = Decoder(self.model.alphas_1,
+                          self.model.alphas_2,
                           self.model.betas,
-                          self.args.B_c,
-                          self.args.B_d)
+                          self.args.B_1,
+                          self.args.B_2)
         result_paths, result_paths_space = decoder.viterbi_decode()
-        genotype_d, genotype_c = decoder.genotype_decode()
+        genotype_1, genotype_2 = decoder.genotype_decode()
 
         try:
             dir_name = os.path.join(self.saver.experiment_dir, str(epoch))
@@ -266,12 +266,12 @@ class Trainer(object):
             print('folder path error')
 
         network_path_filename = os.path.join(dir_name,'network_path')
-        genotype_filename_d = os.path.join(dir_name, 'genotype_1')
-        genotype_filename_c = os.path.join(dir_name, 'genotype_2')
+        genotype_filename_1 = os.path.join(dir_name, 'genotype_1')
+        genotype_filename_2 = os.path.join(dir_name, 'genotype_2')
 
         np.save(network_path_filename, result_paths)
-        np.save(genotype_filename_d, genotype_d)
-        np.save(genotype_filename_c, genotype_c)
+        np.save(genotype_filename_1, genotype_1)
+        np.save(genotype_filename_2, genotype_2)
         
 
 def main():
