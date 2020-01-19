@@ -46,8 +46,8 @@ class DilConv(nn.Module):
     super(DilConv, self).__init__()
     self.op = nn.Sequential(
       nn.ReLU(inplace=False),
-      nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=C_in, bias=False),
-      nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False),
+      nn.Conv2d(C_in, C_out, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=C_in, bias=False),
+      nn.Conv2d(C_out, C_out, kernel_size=1, padding=0, bias=False),
       BatchNorm(C_out, eps=eps, momentum=momentum, affine=affine)
       )
     self._init_weight()
@@ -74,12 +74,12 @@ class SepConv(nn.Module):
     super(SepConv, self).__init__()
     self.op = nn.Sequential(
       nn.ReLU(inplace=False),
-      nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, groups=C_in, bias=False),
-      nn.Conv2d(C_in, C_in, kernel_size=1, padding=0, bias=False),
-      BatchNorm(C_in, eps=eps, momentum=momentum, affine=affine),
+      nn.Conv2d(C_in, C_out, kernel_size=kernel_size, stride=stride, padding=padding, groups=C_in, bias=False),
+      nn.Conv2d(C_out, C_out, kernel_size=1, padding=0, bias=False),
+      BatchNorm(C_out, eps=eps, momentum=momentum, affine=affine),
       nn.ReLU(inplace=False),
-      nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=1, padding=padding, groups=C_in, bias=False),
-      nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False),
+      nn.Conv2d(C_out, C_out, kernel_size=kernel_size, stride=1, padding=padding, groups=C_in, bias=False),
+      nn.Conv2d(C_out, C_out, kernel_size=1, padding=0, bias=False),
       BatchNorm(C_out, eps=eps, momentum=momentum, affine=affine),
       )
     self._init_weight()
@@ -169,36 +169,6 @@ class DoubleFactorizedReduce(nn.Module):
     out = torch.cat([self.conv_1(x), self.conv_2(y[:, :, 2:, 2:])], dim=1)
     out = self.bn(out)
     return out
-
-  def _init_weight(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, SynchronizedBatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                if m.affine != False:
-                    m.weight.data.fill_(1)
-                    m.bias.data.zero_()
-
-class sampleConv(nn.Module):
-  def __init__(self, C_in, C_out, rate, BatchNorm, eps=1e-5, momentum=0.1, affine=True):
-    super(UpsampleConv, self).__init__()
-    assert C_in % 2 == 0
-    self.relu = nn.ReLU(inplace=False)
-    self.conv = ReLUConvBN(C_in, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
-    self.bn = BatchNorm(C_out, eps=eps, momentum=momentum, affine=affine)
-    self._init_weight()
-
-  def forward(self, x):
-    h = int((float(x.shape[2]) - 1.0) * rate + 1.0)
-    w = int((float(x.shape[3]) - 1.0) * rate + 1.0)
-    x = F.interpolate(x, [h, w], mode='bilinear')
-    x = self.relu(x)
-    x = self.conv(x)
-    x = self.bn(x)
-    return x
 
   def _init_weight(self):
         for m in self.modules():
