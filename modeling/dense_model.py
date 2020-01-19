@@ -24,9 +24,7 @@ class Cell(nn.Module):
 
         self.cell_arch = cell_arch
         self.downup_sample = downup_sample
-        self.pre_downup_sample = pre_downup_sample
-        self.pre_preprocess = ReLUConvBN(
-            prev_prev_C, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
+        
         self.preprocess = ReLUConvBN(
             prev_C, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
         self.B = B
@@ -40,9 +38,11 @@ class Cell(nn.Module):
             self.pre_preprocess = nn.ModuleList()
             for i in range(len(pre_pre_c)):
                 self.pre_preprocess.append(
-                    ReLUConvBN(prev_prev_C[i], C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
-                    )
+                    ReLUConvBN(prev_prev_C[i], C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True))
             self.pre_preprocess_1x1 = ReLUConvBN(len(pre_pre_c) * C_out, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
+        else:
+            self.pre_preprocess = ReLUConvBN(
+                prev_prev_C, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
 
         self.dense_process = ReLUConvBN(C_out * B, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
 
@@ -151,10 +151,8 @@ class Model_1 (nn.Module):
             prev_prev_level = self.model_1_network[i-2]
 
             downup_sample = int(prev_level - level)
-            pre_downup_sample = int(prev_prev_level - level)
             if i == 0:
                 downup_sample = int(0 - level)
-                pre_downup_sample = int(-1 - level)
                 _cell = Cell(BatchNorm, B,
                              64, 128,                               # pre_pre_c & pre_c
                              self.cell_arch, self.model_1_network[i],
@@ -162,7 +160,6 @@ class Model_1 (nn.Module):
                              downup_sample) 
                 
             elif i == 1:
-                pre_downup_sample = int(0 - level)
                 _cell = Cell(BatchNorm, B,
                              128, FB * fm[prev_level],
                              self.cell_arch, self.model_1_network[i],
@@ -225,7 +222,7 @@ class Model_1 (nn.Module):
                 x = two_last_inputs[1]
             del feature_map
 
-        x = self.aspp_device(x)
+        x = self.aspp_1(x)
 
         return low_level, dense_feature_map, x
 
@@ -252,12 +249,12 @@ class Model_2 (nn.Module):
 
         self.cells = nn.ModuleList()
         self.model_2_network = network_arch[num_model_1_layers:]
-        self.cell_arch_c = torch.from_numpy(cell_arch_c)
+        self.cell_arch_2 = torch.from_numpy(cell_arch_2)
         self._num_layers = len(self.model_2_network)
         self._num_classes = num_classes
 
         model_1_network = network_arch[:args.num_model_1_layers]
-        self.model_1 = Model_1(model_1_network, cell_arch_d, num_classes, num_model_1_layers, \
+        self.model_1 = Model_1(model_1_network, cell_arch_1, num_classes, num_model_1_layers, \
                                        BatchNorm, F=F_1, B=B_1, low_level_layer=low_level_layer)
         self.decoder_2 = Decoder(num_classes, BatchNorm)
         self._num_layers = 12 - len(num_model_1_layers)     
@@ -267,32 +264,33 @@ class Model_2 (nn.Module):
 
             level = self.model_2_network[i]
             prev_level = self.model_2_network[i-1]
-            prev_prev_level = self.model_2_network[i-2]
 
             downup_sample = int(prev_level - level)
-            num_dense_map = len(model_1_network)+i-1
+            dense_channel_list_1 = [F_1 * fm[stride] for stride in model_1_network]
             if i == 0:
                 downup_sample = int(model_1_network[-1] - self.model_2_network[0])
-                pre_downup_sample = int(model_1_network[-2] - self.model_2_network[0])
-                _cell = Cell(BatchNorm, B_c, 
-                             F_d * B_d * fm[model_1_network[-2]], F_d * B_d * fm[model_1_network[-1]],
-                             self.cell_arch_c, self.model_2_network[i],
-                             F_c * fm[level],
-                             downup_sample, dense=num_dense_map)
+                dense_channel_list_2 = dense_channel_list_1[:-1]
+                _cell = Cell(BatchNorm, B_2, 
+                             dense_channel_list_2, F_1 * B_1 * fm[model_1_network[-1]],
+                             self.cell_arch_2, self.model_2_network[i],
+                             F_2 * fm[level],
+                             downup_sample, dense=True)
             
             elif i == 1:
-                pre_downup_sample = int(model_1_network[-1] - self.model_2_network[1])
-                _cell = Cell(BatchNorm, B_c,
-                             F_d * B_d * fm[model_1_network[-1]], F_c * B_c * fm[self.model_2_network[0]],
-                             self.cell_arch_c, self.model_2_network[i],
-                             F_c * fm[level],
-                             downup_sample, dense=num_dense_map)
+                dense_channel_list_2 = dense_channel_list_1
+                _cell = Cell(BatchNorm, B_2,
+                             dense_channel_list, F_2 * B_2 * fm[self.model_2_network[0]],
+                             self.cell_arch_2, self.model_2_network[i],
+                             F_2 * fm[level],
+                             downup_sample, dense=True)
             else:
-                _cell = Cell(BatchNorm, B_c, 
-                             F_c * B_c * fm[prev_prev_level], F_c * B_c * fm[prev_level],
-                             self.cell_arch_c, self.model_2_network[i],
-                             F_c * fm[level],
-                             downup_sample, dense=num_dense_map)
+                dense_channel_list_2 = dense_channel_list_1 + 
+                                        [F_2 * fm[stride]] for stride in self.model_2_network[:i-1]
+                _cell = Cell(BatchNorm, B_2, 
+                             dense_channel_list, F_2 * B_2 * fm[prev_level],
+                             self.cell_arch_2, self.model_2_network[i],
+                             F_2 * fm[level],
+                             downup_sample, dense=True)
             self.cells += [_cell]
 
         if self.model_2_network[-1] == 1:
@@ -304,7 +302,7 @@ class Model_2 (nn.Module):
         else:
             return
 
-        self.aspp_2 = ASPP_train(F_c * B_c * fm[self.model_2_network[-1]], 
+        self.aspp_2 = ASPP_train(F_2 * B_2 * fm[self.model_2_network[-1]], 
                                      256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
 
@@ -316,17 +314,20 @@ class Model_2 (nn.Module):
             y2 = y1 
 
             for i in range(self._num_layers):
-                _, y2, feature_map = self.cells[i](dense_feature_map[:-1], y2)
-                dense_feature_map.append(y2)
+                if i < self._num_layers - 2:
+                    _, y2, feature_map = self.cells[i](dense_feature_map[:-1], y2)
+                    dense_feature_map.append(y2)
+                else:
+                    _, y2, _ = self.cells[i](dense_feature_map[:-1], y2)
 
             del feature_map, dense_feature_map
 
             y1 = F.interpolate(y1, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y1 = self.model_1.decoder(y1, low_level, size)
+            y1 = self.model_1.decoder_1(y1, low_level, size)
 
-            y2 = self.aspp_cloud(y2)
+            y2 = self.aspp_2(y2)
             y2 = F.interpolate(y2, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            cloud_output = self.decoder(y2, low_level, size)     
+            y2 = self.decoder_2(y2, low_level, size)     
             del low_level    
 
             return y1, y2
@@ -335,27 +336,31 @@ class Model_2 (nn.Module):
             torch.cuda.synchronize()
             tic = time.perf_counter()
 
-            low_level, two_last_inputs, device_output = self.device(x)
+            low_level, dense_feature_map, y1 = self.model_1(x)
             del x
-            device_output = F.interpolate(device_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            device_output = self.device.decoder(device_output, low_level, size)
+            y2 = y1 
+
+            y1 = F.interpolate(y1, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            y1 = self.model_1.decoder(y1, low_level, size)
 
             torch.cuda.synchronize()
             tic_1 = time.perf_counter()
 
             for i in range(self._num_layers):
-                two_last_inputs = self.cells[i](
-                    two_last_inputs[0], two_last_inputs[1])
+                if i < self._num_layers - 2:
+                    _, y2, feature_map = self.cells[i](dense_feature_map[:-1], y2)
+                    dense_feature_map.append(y2)
+                else:
+                    _, y2, _ = self.cells[i](dense_feature_map[:-1], y2)
 
-            last_output = two_last_inputs[-1]
-            cloud_output = self.aspp_cloud(last_output)
-            cloud_output = F.interpolate(cloud_output, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            cloud_output = self.decoder(cloud_output, low_level, size)
+            y2 = self.aspp_2(y2)
+            y2 = F.interpolate(y2, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            y2 = self.decoder_2(y2, low_level, size)
 
             torch.cuda.synchronize()
             tic_2 = time.perf_counter()
 
-            return device_output, cloud_output, tic_1 - tic, tic_2 - tic
+            return y1, y2, tic_1 - tic, tic_2 - tic
 
     def _init_weight(self):
         for m in self.modules():
