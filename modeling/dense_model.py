@@ -147,6 +147,7 @@ class Model_1 (nn.Module):
             nn.Conv2d(3, 64, 3, stride=2, padding=1),
             BatchNorm(64),
         )
+        
         self.stem1 = nn.Sequential(
             nn.Conv2d(64, 64, 3, padding=1),
             BatchNorm(64),

@@ -11,7 +11,6 @@ from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
-from modeling.dense_model import *
 from torchviz import make_dot, make_dot_from_trace
 
 APEX_AVAILABLE = False
@@ -34,8 +33,8 @@ class trainNew(object):
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
-        cell_path_1 = os.path.join(args.saved_arch_path, 'genotype_device.npy')
-        cell_path_2 = os.path.join(args.saved_arch_path, 'genotype_cloud.npy')
+        cell_path_1 = os.path.join(args.saved_arch_path, 'genotype_1.npy')
+        cell_path_2 = os.path.join(args.saved_arch_path, 'genotype_2.npy')
         network_path_space = os.path.join(args.saved_arch_path, 'network_path_space.npy')
 
         new_cell_arch_1 = np.load(cell_path_1)
@@ -43,12 +42,13 @@ class trainNew(object):
  
         new_network_arch = np.load(network_path_space)
         
-        if args.network == 'dist':
+        if args.network == 'searched_dense':
+            from modeling.dense_model import *
             new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
-            args.B_1=4
             low_level_layer = 1
 
         elif args.network == 'autodeeplab':
+            from modeling.baseline_model import *
             new_network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
             cell = np.zeros((10, 2))
             cell[0] = [0, 7]
@@ -141,6 +141,7 @@ class trainNew(object):
         if args.ft:
             args.start_epoch = 0
 
+
     def training(self, epoch):
         train_loss = 0.0
         self.model.train()
@@ -173,6 +174,7 @@ class trainNew(object):
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
+
 
     def validation(self, epoch):
         self.model.eval()
@@ -227,6 +229,7 @@ class trainNew(object):
                 'best_pred': self.best_pred,
             }, is_best)
 
+
 def main():
     parser = argparse.ArgumentParser(description="Dynamic DeepLab Training")
 
@@ -249,8 +252,6 @@ def main():
 
 
     # training config
-    parser.add_argument('--autodeeplab', type=str, default='train',
-                        choices=['search', 'train'])
     parser.add_argument('--sync-bn', type=bool, default=None,
                         help='whether to use sync bn (default: auto)')
     parser.add_argument('--freeze-bn', type=bool, default=False,
@@ -313,11 +314,10 @@ def main():
         except ValueError:
             raise ValueError('Argument --gpu_ids must be a comma-separated list of integers only')
 
-    if args.sync_bn is None:
-        if args.cuda and len(args.gpu_ids) > 1:
-            args.sync_bn = True
-        else:
-            args.sync_bn = False
+    if args.cuda and len(args.gpu_ids) > 1:
+        args.sync_bn = True
+    else:
+        args.sync_bn = False
 
     if args.test_batch_size is None:
         args.test_batch_size = 1
