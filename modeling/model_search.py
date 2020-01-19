@@ -7,10 +7,10 @@ import torch.nn.functional as F
 from modeling.operations import *
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 
-class AutoDeeplab (nn.Module) :
+class Model_search (nn.Module) :
     def __init__(self, num_classes, num_layers, F=8, B_1=5, B_2=5, 
                  exit_layer=5, sync_bn=False ,cell=cell_level_search.Cell):
-        super(AutoDeeplab, self).__init__()
+        super(Model_search, self).__init__()
 
         BatchNorm = SynchronizedBatchNorm2d if sync_bn == True else nn.BatchNorm2d
         self.cells = nn.ModuleList()
@@ -817,7 +817,7 @@ class AutoDeeplab (nn.Module) :
 
 
 def main () :
-    model = AutoDeeplab (7, 12, None)
+    model = Model_search (7, 12, None)
     x = torch.tensor (torch.ones (4, 3, 224, 224))
 
 if __name__ == '__main__' :
