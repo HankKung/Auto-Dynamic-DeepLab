@@ -26,9 +26,15 @@ class MixedOp (nn.Module):
 
 class Cell(nn.Module):
 
-    def __init__(self, B, prev_prev_C,
-                 prev_C_down, prev_C_same, prev_C_up,
-                 C_out, BatchNorm=nn.BatchNorm2d, pre_preprocess_sample_rate=1):
+    def __init__(self,
+                B,
+                prev_prev_C,
+                prev_C_down,
+                prev_C_same,
+                prev_C_up,
+                C_out,
+                BatchNorm=nn.BatchNorm2d,
+                pre_preprocess_sample_rate=1):
 
         super(Cell, self).__init__()
 
@@ -65,9 +71,11 @@ class Cell(nn.Module):
                     op = MixedOp(C_out, stride, BatchNorm)
                 self._ops.append(op)
 
+
     def scale_dimension(self, dim, scale):
         assert isinstance(dim, int)
         return int((float(dim) - 1.0) * scale + 1.0) if dim % 2 else int(dim * scale)
+
 
     def prev_feature_resize(self, prev_feature, mode):
         if mode == 'down':
@@ -76,11 +84,10 @@ class Cell(nn.Module):
         elif mode == 'up':
             feature_size_h = self.scale_dimension(prev_feature.shape[2], 2)
             feature_size_w = self.scale_dimension(prev_feature.shape[3], 2)
-
         return F.interpolate(prev_feature, (feature_size_h, feature_size_w), mode='bilinear')
 
-    def forward(self, s0, s1_down, s1_same, s1_up, n_alphas):
 
+    def forward(self, s0, s1_down, s1_same, s1_up, n_alphas):
         if s1_down is not None:
             s1_down = self.preprocess_down(s1_down)
             size_h, size_w = s1_down.shape[2], s1_down.shape[3]

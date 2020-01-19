@@ -20,16 +20,16 @@ class trainNew(object):
     def __init__(self, args):
         self.args = args
 
-        # Define Saver
+        """ Define Saver """
         self.saver = Saver(args)
         self.saver.save_experiment_config()
 
-        # Define Tensorboard Summary
+        """ Define Tensorboard Summary """
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
         self.use_amp = False
 
-        # Define Dataloader
+        """ Define Dataloader """
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
@@ -66,7 +66,7 @@ class trainNew(object):
             new_cell_arch_2 = cell      
             low_level_layer = 2
 
-        # Define network
+        """ Define network """
         model = Model_2(new_network_arch,
                                 new_cell_arch_1,
                                 new_cell_arch_2,
@@ -74,12 +74,12 @@ class trainNew(object):
                                 args,
                                 low_level_layer)
 
-        # Define Optimizer
+        """ Define Optimizer """
         optimizer = torch.optim.SGD(model.parameters(), momentum=args.momentum,
                                     weight_decay=args.weight_decay, nesterov=args.nesterov)
 
-        # Define Criterion
-        # whether to use class balanced weights
+        """ Define Criterion """
+        """ whether to use class balanced weights """
         if args.use_balanced_weights:
             classes_weights_path = os.path.join(Path.db_root_dir(args.dataset), args.dataset + '_classes_weights.npy')
             if os.path.isfile(classes_weights_path):
@@ -92,22 +92,22 @@ class trainNew(object):
         self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
         self.model, self.optimizer = model, optimizer
 
-        # Define Evaluator
+        """ Define Evaluator """
         self.evaluator_1 = Evaluator(self.nclass)
         self.evaluator_2 = Evaluator(self.nclass)
 
-        # Define lr scheduler
+        """ Define lr scheduler """
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                       args.epochs, len(self.train_loader))
 
-        # Using cuda
+        """ Using cuda """
         if args.cuda:
             if args.sync_bn:
                 self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
                 patch_replication_callback(self.model)
             self.model = self.model.cuda()
 
-        # Resuming checkpoint
+        """ Resuming checkpoint """
         self.best_pred = 0.0
         if args.resume is not None:
             if not os.path.isfile(args.resume):
@@ -115,7 +115,7 @@ class trainNew(object):
             checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
 
-            # if the weights are wrapped in module object we have to clean it
+            """ if the weights are wrapped in module object we have to clean it """
             if args.clean_module:
                 self.model.load_state_dict(checkpoint['state_dict'])
                 state_dict = checkpoint['state_dict']
@@ -137,7 +137,7 @@ class trainNew(object):
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
 
-        # Clear start epoch if fine-tuning
+        """ Clear start epoch if fine-tuning """
         if args.ft:
             args.start_epoch = 0
 
@@ -199,7 +199,7 @@ class trainNew(object):
             pred_1 = torch.argmax(output_1, axis=1)
             pred_2 = torch.argmax(output_2, axis=1)
 
-            # Add batch sample into evaluator
+            """ Add batch sample into evaluator """
             self.evaluator_1.add_batch(target, pred_1)
             self.evaluator_2.add_batch(target, pred_2)
             if epoch//100 == i:
@@ -233,7 +233,7 @@ class trainNew(object):
 def main():
     parser = argparse.ArgumentParser(description="Dynamic DeepLab Training")
 
-    ## model setting
+    """ model setting """
     parser.add_argument('--network', type=str, default='searched_dense',
                         choices=['searched_dense', 'searched_baseline', 'autodeeplab'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
@@ -243,7 +243,7 @@ def main():
     parser.add_argument('--B_1', type=int, default=5)
 
 
-    ## dataset config
+    """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes',
                         choices=['pascal', 'coco', 'cityscapes'],
                         help='dataset name (default: pascal)')
@@ -251,7 +251,7 @@ def main():
                         metavar='N', help='dataloader threads')
 
 
-    # training config
+    """ training config """
     parser.add_argument('--sync-bn', type=bool, default=None,
                         help='whether to use sync bn (default: auto)')
     parser.add_argument('--freeze-bn', type=bool, default=False,
@@ -266,7 +266,7 @@ def main():
     parser.add_argument('--use-balanced-weights', action='store_true', default=False)
 
 
-    # optimizer params
+    """ optimizer params """
     parser.add_argument('--lr', type=float, default=None, metavar='LR')
     parser.add_argument('--min_lr', type=float, default=0)
     parser.add_argument('--lr-scheduler', type=str, default='poly',
@@ -279,7 +279,7 @@ def main():
                         help='whether use nesterov (default: False)')
 
 
-    # cuda, seed and logging
+    """ cuda, seed and logging """
     parser.add_argument('--no-cuda', action='store_true', default=False)
     parser.add_argument('--gpu-ids', type=str, default='0',
                         help='use which gpu to train, must be a \
@@ -288,7 +288,7 @@ def main():
                         help='random seed (default: 1)')
 
 
-    # checking point
+    """ checking point """
     parser.add_argument('--resume', type=str, default=None,
                         help='put the path to resuming file if needed')
     parser.add_argument('--saved-arch-path', type=str, default=None,
@@ -297,12 +297,12 @@ def main():
                         help='set the checkpoint name')
 
 
-    # finetuning pre-trained models
+    """ finetuning pre-trained models """
     parser.add_argument('--ft', action='store_true', default=False,
                         help='finetuning on a different dataset')
 
 
-    # evaluation option
+    """ evaluation option """
     parser.add_argument('--eval-interval', type=int, default=100,
                         help='evaluuation interval (default: 1)')
     

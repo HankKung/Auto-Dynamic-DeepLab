@@ -8,8 +8,16 @@ from modeling.operations import *
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 
 class Model_search (nn.Module) :
-    def __init__(self, num_classes, num_layers, F=8, B_1=5, B_2=5, 
-                 exit_layer=5, sync_bn=False ,cell=cell_level_search.Cell):
+    def __init__(self,
+                num_classes,
+                num_layers,
+                F=8,
+                B_1=5,
+                B_2=5, 
+                exit_layer=5,
+                sync_bn=False,
+                cell=cell_level_search.Cell):
+
         super(Model_search, self).__init__()
 
         BatchNorm = SynchronizedBatchNorm2d if sync_bn == True else nn.BatchNorm2d
@@ -63,7 +71,7 @@ class Model_search (nn.Module) :
             BatchNorm(f_initial),
         )
 
-        # build the cells
+        """ build the cells """
         for i in range (self._num_layers):
 
             if i == 0 :
@@ -252,6 +260,7 @@ class Model_search (nn.Module) :
         )
         self._init_weight()
 
+
     def forward (self, x) :
         level_4 = []
         level_8 = []
@@ -269,13 +278,14 @@ class Model_search (nn.Module) :
         count = 0
 
         normalized_betas = torch.randn(12, 4, 3).cuda().half()
-        # Softmax on alphas and betas
+
+        """ Softmax on alphas and betas """
         if torch.cuda.device_count() > 1:
             img_device = torch.device('cuda', x.get_device())
             normalized_alphas_1 = F.softmax(self.alphas_1.to(device=img_device), dim=-1)
             normalized_alphas_2 = F.softmax(self.alphas_2.to(device=img_device), dim=-1)
 
-            # normalized_betas[layer][ith node][0 : ➚, 1: ➙, 2 : ➘]
+            """ normalized_betas[layer][ith node][0 : ➚, 1: ➙, 2 : ➘] """
             for layer in range (len(self.betas)):
                 if layer == 0:
                     normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1) * (2/3)
@@ -448,7 +458,6 @@ class Model_search (nn.Module) :
                 count += 1
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
 
-
                 level_4.append (level4_new)
                 level_8.append (level8_new)
                 level_16.append (level16_new)
@@ -553,7 +562,6 @@ class Model_search (nn.Module) :
                 exit_1_8_new = self.aspp_exit_1_8(level_8[-1])
                 exit_1_16_new = self.aspp_exit_1_16(level_16[-1])
                 exit_1_32_new = self.aspp_exit_1_32(level_32[-1])
-
 
             elif layer == self.exit_layer+1:
                 level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
@@ -773,11 +781,10 @@ class Model_search (nn.Module) :
 
         return exit_1_sum_feature_map, exit_2_sum_feature_map
 
+
     def _init_weight(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt(2. / n))
                 torch.nn.init.kaiming_normal_(m.weight)
             elif isinstance(m, SynchronizedBatchNorm2d):
                 m.weight.data.fill_(1)
@@ -786,6 +793,7 @@ class Model_search (nn.Module) :
                 if m.affine != False:
                     m.weight.data.fill_(1)
                     m.bias.data.zero_()
+
 
     def _initialize_alphas_betas(self):
         k_1 = sum(1 for i in range(self.B_1) for n in range(2+i))
@@ -808,13 +816,13 @@ class Model_search (nn.Module) :
 
         [self.register_parameter(name, torch.nn.Parameter(param)) for name, param in zip(self._arch_param_names, self._arch_parameters)]
 
+
     def arch_parameters (self) :
         return [param for name, param in self.named_parameters() if name in self._arch_param_names]
 
+
     def weight_parameters(self):
         return [param for name, param in self.named_parameters() if name not in self._arch_param_names]
-
-
 
 def main () :
     model = Model_search (7, 12, None)

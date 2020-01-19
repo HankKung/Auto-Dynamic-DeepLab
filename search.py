@@ -37,10 +37,11 @@ class Trainer(object):
     def __init__(self, args):
         self.args = args
 
-        # Define Saver
+        """ Define Saver """
         self.saver = Saver(args)
         self.saver.save_experiment_config()
-        # Define Tensorboard Summary
+
+        """ Define Tensorboard Summary """
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
         self.use_amp = True if (APEX_AVAILABLE and args.use_amp) else False
@@ -54,14 +55,14 @@ class Trainer(object):
             if os.path.isfile(classes_weights_path):
                 weight = np.load(classes_weights_path)
             else:
-                #if so, which trainloader to use?
+                """ if so, which trainloader to use? """
                 weight = calculate_weigths_labels(args.dataset, self.train_loader, self.nclass)
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
         self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
 
-        # Define network
+        """ Define network """
         model = Model_search (num_classes=self.nclass, num_layers=12, F=self.args.filter_multiplier,
                              B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
         optimizer = torch.optim.SGD(
@@ -77,25 +78,26 @@ class Trainer(object):
                                                     lr=args.arch_lr, betas=(0.9, 0.999),
                                                     weight_decay=args.arch_weight_decay)
 
-        # Define Evaluator
+        """ Define Evaluator """
         self.evaluator_1 = Evaluator(self.nclass)
         self.evaluator_2 = Evaluator(self.nclass)
-        # Define lr scheduler
+
+        """ Define lr scheduler """
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                       args.epochs, len(self.train_loaderA), min_lr=args.min_lr)
-        # Using cuda
+        """ Using cuda """
         if args.cuda:
             self.model = self.model.cuda()
 
-        # mixed precision
+        """ mixed precision """
         if self.use_amp and args.cuda:
             keep_batchnorm_fp32 = True if (self.opt_level == 'O2' or self.opt_level == 'O3') else None
 
-            # fix for current pytorch version with opt_level 'O1'
+            """ fix for current pytorch version with opt_level 'O1' """
             if self.opt_level == 'O1' and torch.__version__ < '1.3':
                 for module in self.model.modules():
                     if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
-                        # Hack to fix BN fprop without affine transformation
+                        """ Hack to fix BN fprop without affine transformation """
                         if module.weight is None:
                             module.weight = torch.nn.Parameter(
                                 torch.ones(module.running_var.shape, dtype=module.running_var.dtype,
@@ -113,7 +115,7 @@ class Trainer(object):
             print('cuda finished')
 
 
-        #Using data parallel
+        """ Using data parallel"""
         if args.cuda and len(self.args.gpu_ids) >1:
             if self.opt_level == 'O2' or self.opt_level == 'O3':
                 print('currently cannot run with nn.DataParallel and optimization level', self.opt_level)
@@ -121,7 +123,7 @@ class Trainer(object):
             patch_replication_callback(self.model)
             print('training on multiple-GPUs')
 
-        # Resuming checkpoint
+        """ Resuming checkpoint """
         self.best_pred = 0.0
         if args.resume is not None:
             if not os.path.isfile(args.resume):
@@ -129,7 +131,7 @@ class Trainer(object):
             checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
 
-            # if the weights are wrapped in module object we have to clean it
+            """ if the weights are wrapped in module object we have to clean it """
             if args.clean_module:
                 self.model.load_state_dict(checkpoint['state_dict'])
                 state_dict = checkpoint['state_dict']
@@ -198,6 +200,7 @@ class Trainer(object):
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
 
+
     def validation(self, epoch):
         self.model.eval()
         self.evaluator_1.reset()
@@ -221,13 +224,14 @@ class Trainer(object):
             output_1 = torch.argmax(output_1, axis=1)
             output_2 = torch.argmax(output_2, axis=1)
 
-            # Add batch sample into evaluator
+            """ Add batch sample into evaluator"""
             self.evaluator_1.add_batch(target, output_1)
             self.evaluator_2.add_batch(target, output_2)
 
         mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
         mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
-        # FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
+
+        """ FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union() """
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
         self.writer.add_scalar('val/classifier_1/mIoU', mIoU_1, epoch)
         self.writer.add_scalar('val/classifier_2/mIoU', mIoU_2, epoch)
@@ -250,7 +254,7 @@ class Trainer(object):
                 'best_pred': self.best_pred,
             }, is_best)
 
-        ## decode the arch
+        """ decode the arch """
         decoder = Decoder(self.model.alphas_1,
                           self.model.alphas_2,
                           self.model.betas,
@@ -277,21 +281,19 @@ class Trainer(object):
 def main():
     parser = argparse.ArgumentParser(description="The Search")
 
-    # Search Network
+    """ Search Network """
     parser.add_argument('--opt_level', type=str, default='O0',
                         choices=['O0', 'O1', 'O2', 'O3'],
                         help='opt level for half percision training (default: O0)')
     parser.add_argument('--dataset', type=str, default='kd',
                         choices=['pascal', 'coco', 'cityscapes', 'kd'],
                         help='dataset name (default: pascal)')
-    parser.add_argument('--autodeeplab', type=str, default='search',
-                        choices=['search', 'train'])
     parser.add_argument('--filter_multiplier', type=int, default=8)
     parser.add_argument('--B_2', type=int, default=5)
     parser.add_argument('--B_1', type=int, default=5)
 
 
-    # Training Setting
+    """ Training Setting """
     parser.add_argument('--start_epoch', type=int, default=0,
                         metavar='N', help='start epochs (default:0)')
     parser.add_argument('--epochs', type=int, default=40, metavar='N',
@@ -306,7 +308,7 @@ def main():
     parser.add_argument('--clean-module', type=int, default=0)
 
 
-    # Dataset Setting
+    """ Dataset Setting """
     parser.add_argument('--use-sbd', action='store_true', default=False,
                         help='whether to use SBD dataset (default: True)')
     parser.add_argument('--load-parallel', type=int, default=0)
@@ -322,13 +324,12 @@ def main():
                         help='whether to use balanced weights (default: False)')
 
 
-    # optimizer params
+    """ optimizer params """
     parser.add_argument('--lr', type=float, default=0.025, metavar='LR',
                         help='learning rate (default: auto)')
     parser.add_argument('--min_lr', type=float, default=0.001)
     parser.add_argument('--arch-lr', type=float, default=3e-3, metavar='LR',
                         help='learning rate for alpha and beta in architect searching process')
-
     parser.add_argument('--lr-scheduler', type=str, default='cos',
                         choices=['poly', 'step', 'cos'],
                         help='lr scheduler mode')
@@ -338,15 +339,13 @@ def main():
                         metavar='M', help='w-decay (default: 5e-4)')
     parser.add_argument('--arch-weight-decay', type=float, default=1e-3,
                         metavar='M', help='w-decay (default: 5e-4)')
-
     parser.add_argument('--nesterov', action='store_true', default=False,
                         help='whether use nesterov (default: False)')
 
 
-    # cuda, seed and logging
+    """ cuda, seed and logging """
     parser.add_argument('--no-cuda', action='store_true', default=
                         False, help='disables CUDA training')
-  
     parser.add_argument('--use_amp', action='store_true', default=
                         False)  
     parser.add_argument('--gpu-ids', type=str, default='0',
@@ -354,12 +353,16 @@ def main():
                         comma-separated list of integers only (default=0)')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    # checking point
+
+
+    """ checking point """
     parser.add_argument('--resume', type=str, default=None,
                         help='put the path to resuming file if needed')
     parser.add_argument('--checkname', type=str, default=None,
                         help='set the checkpoint name')
-    # evaluation option
+
+
+    """ evaluation option """
     parser.add_argument('--eval-interval', type=int, default=1,
                         help='evaluuation interval (default: 1)')
     parser.add_argument('--no-val', action='store_true', default=False,
@@ -373,11 +376,10 @@ def main():
         except ValueError:
             raise ValueError('Argument --gpu_ids must be a comma-separated list of integers only')
 
-    if args.sync_bn is None:
-        if args.cuda and len(args.gpu_ids) > 1:
-            args.sync_bn = True
-        else:
-            args.sync_bn = False
+    if args.cuda and len(args.gpu_ids) > 1:
+        args.sync_bn = True
+    else:
+        args.sync_bn = False
 
     if args.test_batch_size is None:
         args.test_batch_size = 1

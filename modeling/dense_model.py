@@ -147,7 +147,7 @@ class Model_1 (nn.Module):
             nn.Conv2d(3, 64, 3, stride=2, padding=1),
             BatchNorm(64),
         )
-        
+
         self.stem1 = nn.Sequential(
             nn.Conv2d(64, 64, 3, padding=1),
             BatchNorm(64),
@@ -433,22 +433,18 @@ class ASPP_train(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.aspp1 = conv(C, depth, kernel_size=1, stride=1, bias=False)
         self.aspp2 = conv(C, depth, kernel_size=3, stride=1,
-                               dilation=int(6*mult), padding=int(6*mult),
-                               bias=False)
+                               dilation=int(6*mult), padding=int(6*mult), bias=False)
         self.aspp3 = conv(C, depth, kernel_size=3, stride=1,
-                               dilation=int(12*mult), padding=int(12*mult),
-                               bias=False)
+                               dilation=int(12*mult), padding=int(12*mult), bias=False)
         self.aspp4 = conv(C, depth, kernel_size=3, stride=1,
-                               dilation=int(18*mult), padding=int(18*mult),
-                               bias=False)
+                               dilation=int(18*mult), padding=int(18*mult), bias=False)
         self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
         self.aspp1_bn = BatchNorm(depth)
         self.aspp2_bn = BatchNorm(depth)
         self.aspp3_bn = BatchNorm(depth)
         self.aspp4_bn = BatchNorm(depth)
         self.aspp5_bn = BatchNorm(depth)
-        self.conv1 = conv(depth * 5, depth, kernel_size=1, stride=1,
-                               bias=False)
+        self.conv1 = conv(depth * 5, depth, kernel_size=1, stride=1, bias=False)
         self.bn1 = BatchNorm(depth)
         self._init_weight()
 
@@ -498,7 +494,6 @@ class ASPP_train(nn.Module):
 
 
 class Decoder(nn.Module):
-
     def __init__(self, n_class, BatchNorm):
         super(Decoder, self).__init__()
         self._conv = nn.Sequential(nn.Conv2d(304, 256, kernel_size=3, stride=1, padding=1, bias=False),

@@ -23,6 +23,7 @@ def network_layer_to_space(net_arch):
             prev = layer
     return space
 
+
 class Decoder(object):
     def __init__(self, alphas_1, alphas_2, betas, B_2, B_1):
         self._betas = betas
@@ -48,6 +49,7 @@ class Decoder(object):
                 self.network_space[layer][1] = F.softmax(self._betas[layer][1], dim=-1)
                 self.network_space[layer][2] = F.softmax(self._betas[layer][2], dim=-1)
                 self.network_space[layer][3][:2] = F.softmax(self._betas[layer][3][:2], dim=-1) * (2/3)
+
 
     def viterbi_decode(self):
         prob_space = np.zeros((self.network_space.shape[:2]))
@@ -80,8 +82,8 @@ class Decoder(object):
         actual_path[-1] = output_sample
         for i in range(1, self._num_layers):
             actual_path[-i - 1] = actual_path[-i] + path_space[self._num_layers - i, actual_path[-i]]
-
         return actual_path, network_layer_to_space(actual_path)
+
 
     def genotype_decode(self):
 
@@ -105,5 +107,4 @@ class Decoder(object):
 
         gene_cell_1 = _parse(normalized_alphas_1, self._B_1)
         gene_cell_2 = _parse(normalized_alphas_2, self._B_2)
-
         return gene_cell_1, gene_cell_2
