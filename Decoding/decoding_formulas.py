@@ -24,12 +24,12 @@ def network_layer_to_space(net_arch):
     return space
 
 class Decoder(object):
-    def __init__(self, alphas_d, alphas_c, betas, B_c, B_d):
+    def __init__(self, alphas_1, alphas_2, betas, B_2, B_1):
         self._betas = betas
-        self._alphas_d = alphas_d
-        self._alphas_c = alphas_c
-        self._B_c = B_c
-        self._B_d = B_d
+        self._alphas_1 = alphas_1
+        self._alphas_2 = alphas_2
+        self._B_1 = B_1
+        self._B_2 = B_2
         self._num_layers = len(self._betas)
         self.network_space = torch.zeros(12, 4, 3)
         for layer in range(len(self._betas)):
@@ -100,10 +100,10 @@ class Decoder(object):
                 n += 1
             return np.array(gene)
 
-        normalized_alphas_d = F.softmax(self._alphas_d, dim=-1).data.cpu().numpy()
-        normalized_alphas_c = F.softmax(self._alphas_c, dim=-1).data.cpu().numpy()
+        normalized_alphas_1 = F.softmax(self._alphas_1, dim=-1).data.cpu().numpy()
+        normalized_alphas_2 = F.softmax(self._alphas_2, dim=-1).data.cpu().numpy()
 
-        gene_cell_d = _parse(normalized_alphas_d, self._B_d)
-        gene_cell_c = _parse(normalized_alphas_c, self._B_c)
+        gene_cell_1 = _parse(normalized_alphas_1, self._B_1)
+        gene_cell_2 = _parse(normalized_alphas_2, self._B_2)
 
-        return gene_cell_d, gene_cell_c
+        return gene_cell_1, gene_cell_2
