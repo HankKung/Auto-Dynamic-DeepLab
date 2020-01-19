@@ -369,7 +369,8 @@ class Model_2 (nn.Module):
                 m.bias.data.zero_()
 
     def get_1x_lr_params(self):
-        modules = [self.model_1.stem0, self.model_1.stem1, self.model_1.stem2, self.model_1.cells, self.cells]
+        modules = [self.model_1.stem0, self.model_1.stem1, self.model_1.stem2, self.model_1.cells, self.cells, 
+                    self.model_1.aspp_1, self.aspp_2, self.model_1.decoder_1, self.decoder_2]
         for i in range(len(modules)):
             if i < 3:
                 for m in modules[i].named_modules():
@@ -384,14 +385,14 @@ class Model_2 (nn.Module):
                             for p in m[1].parameters():
                                 if p.requires_grad:
                                     yield p
-    def get_10x_lr_params(self):
-        modules = [self.model_1.aspp_1, self.aspp_2, self.model_1.decoder_1, self.decoder_2]
-        for i in range(len(modules)):
-            for m in modules[i].named_modules():
-                if isinstance(m[1], nn.Conv2d)or isinstance(m[1], nn.BatchNorm2d):
-                    for p in m[1].parameters():
-                        if p.requires_grad:
-                            yield p
+    # def get_10x_lr_params(self):
+    #     modules = [self.model_1.aspp_1, self.aspp_2, self.model_1.decoder_1, self.decoder_2]
+    #     for i in range(len(modules)):
+    #         for m in modules[i].named_modules():
+    #             if isinstance(m[1], nn.Conv2d)or isinstance(m[1], nn.BatchNorm2d):
+    #                 for p in m[1].parameters():
+    #                     if p.requires_grad:
+    #                         yield p
 
 class ASPP_train(nn.Module):
     def __init__(self, C, depth, num_classes, BatchNorm, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1):

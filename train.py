@@ -74,8 +74,7 @@ class trainNew(object):
                                 args,
                                 low_level_layer)
 
-        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
-                        {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
+        train_params = {'params': model.get_1x_lr_params(), 'lr': args.lr}
 
         # Define Optimizer
         optimizer = torch.optim.SGD(train_params, momentum=args.momentum,

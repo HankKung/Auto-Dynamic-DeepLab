@@ -14,7 +14,7 @@ from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
-from modeling.model_search import AutoDeeplab
+from modeling.model_search import Model_search
 from decoding.decoding_formulas import Decoder
 import apex
 
@@ -62,7 +62,7 @@ class Trainer(object):
         self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
 
         # Define network
-        model = AutoDeeplab (num_classes=self.nclass, num_layers=12, F=self.args.filter_multiplier,
+        model = Model_search (num_classes=self.nclass, num_layers=12, F=self.args.filter_multiplier,
                              B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
