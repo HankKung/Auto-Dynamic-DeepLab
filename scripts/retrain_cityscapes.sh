@@ -1,13 +1,12 @@
 CUDA_VISIBLE_DEVICES=0,1 python ../train.py \
---checkname proposed_retrain_large \
+--checkname testing \
 --network searched_dense \
---F_2 48 \
 --batch-size 16 \
 --workers 16 \
 --dataset cityscapes \
 --use-balanced-weights \
---epoch 8100 \
+--epoch 2150 \
 --lr 0.05 \
 --nesterov \
 --gpu-ids 0,1 \
---saved-arch-path ../searched_arch
+--saved-arch-path ../searched_arch/40_5e_38_lr

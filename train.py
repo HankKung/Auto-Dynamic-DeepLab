@@ -12,6 +12,8 @@ from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
 from torchviz import make_dot, make_dot_from_trace
+from modeling.baseline_model import *
+from modeling.dense_model import *
 
 APEX_AVAILABLE = False
 torch.backends.cudnn.benchmark = True
@@ -43,12 +45,15 @@ class trainNew(object):
         new_network_arch = np.load(network_path_space)
         
         if args.network == 'searched_dense':
-            from modeling.dense_model import *
-            new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
+            """baseline_non_dense"""
+            # new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
+
+             """ 40_5e_lr_38_31.91  """
+            new_network_arch = [1,2,3,2,3,2,2,1,2,1,1,2]
+
             low_level_layer = 1
 
         elif args.network == 'autodeeplab':
-            from modeling.baseline_model import *
             new_network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
             cell = np.zeros((10, 2))
             cell[0] = [0, 7]
@@ -65,6 +70,7 @@ class trainNew(object):
             new_cell_arch_1 = cell
             new_cell_arch_2 = cell      
             low_level_layer = 2
+
 
         """ Define network """
         model = Model_2(new_network_arch,

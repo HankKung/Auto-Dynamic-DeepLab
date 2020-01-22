@@ -1,16 +1,17 @@
 import torch
 import torch.nn as nn
-import numpy as np
-from modeling import cell_level_search
-from modeling.genotypes import PRIMITIVES
-from modeling.genotypes import Genotype
 import torch.nn.functional as F
-from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 import numpy as np
+
+from modeling.genotypes import PRIMITIVES
+from modeling.aspp_train import ASPP_train
+from modeling.decoder import Decoder
+from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.operations import *
+
 import time
 
-class Cell(nn.Module):
+class Cell_baseline(nn.Module):
 
     def __init__(self,
                 BatchNorm,
@@ -22,7 +23,7 @@ class Cell(nn.Module):
                 C_out,
                 downup_sample):
 
-        super(Cell, self).__init__()
+        super(Cell_baseline, self).__init__()
         eps = 1e-5
         momentum = 0.1
 
@@ -92,7 +93,7 @@ class Cell(nn.Module):
         return prev_input, concat_feature
 
 
-class Model_1 (nn.Module):
+class Model_1_baseline (nn.Module):
     def __init__(self,
                 network_arch,
                 cell_arch,
@@ -103,7 +104,7 @@ class Model_1 (nn.Module):
                 B=4,
                 low_level_layer=1):
 
-        super(new_device_Model, self).__init__()
+        super(Model_1_baseline, self).__init__()
         
         self.cells = nn.ModuleList()
         self.model_1_network = network_arch
@@ -144,7 +145,7 @@ class Model_1 (nn.Module):
             if i == 0:
                 downup_sample = int(0 - level)
                 pre_downup_sample = int(-1 - level)
-                _cell = Cell(BatchNorm,
+                _cell = Cell_baseline(BatchNorm,
                             B,
                             64,
                             128,                              
@@ -156,7 +157,7 @@ class Model_1 (nn.Module):
                 
             elif i == 1:
                 pre_downup_sample = int(0 - level)
-                _cell = Cell(BatchNorm,
+                _cell = Cell_baseline(BatchNorm,
                             B,
                             128,
                             FB * fm[prev_level],
@@ -166,7 +167,7 @@ class Model_1 (nn.Module):
                             downup_sample,
                             pre_downup_sample)
             else:
-                _cell = Cell(BatchNorm,
+                _cell = Cell_baseline(BatchNorm,
                             B, 
                             FB * fm[prev_prev_level],
                             FB * fm[prev_level],
@@ -223,9 +224,9 @@ class Model_1 (nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-class Model_2 (nn.Module):
+class Model_2_baseline (nn.Module):
     def __init__(self, network_arch, cell_arch_1, cell_arch_2, num_classes, args, low_level_layer):
-        super(Model_2, self).__init__()
+        super(Model_2_baseline, self).__init__()
         BatchNorm = SynchronizedBatchNorm2d if args.sync_bn == True else nn.BatchNorm2d
         F_2 = args.F_2
         F_1 = args.F_1
@@ -239,7 +240,7 @@ class Model_2 (nn.Module):
         self._num_classes = num_classes
 
         model_1_network = network_arch[:args.num_model_1_layers]
-        self.model_1 = Model_1(model_1_network, cell_arch_1, num_classes, num_model_1_layers, \
+        self.model_1 = Model_1_baseline(model_1_network, cell_arch_1, num_classes, num_model_1_layers, \
                                        BatchNorm, F=F_1, B=B_1, low_level_layer=low_level_layer)
         self.decoder_2 = Decoder(num_classes, BatchNorm)
         
@@ -257,7 +258,7 @@ class Model_2 (nn.Module):
             if i == 0:
                 downup_sample = int(model_1_network[-1] - self.model_2_network[0])
                 pre_downup_sample = int(model_1_network[-2] - self.model_2_network[0])
-                _cell = Cell(BatchNorm, B_2, 
+                _cell = Cell_baseline(BatchNorm, B_2, 
                             F_1 * B_1 * fm[model_1_network[-2]],
                             F_1 * B_1 * fm[model_1_network[-1]],
                             self.cell_arch_2,
@@ -268,7 +269,7 @@ class Model_2 (nn.Module):
             
             elif i == 1:
                 pre_downup_sample = int(model_1_network[-1] - self.model_2_network[1])
-                _cell = Cell(BatchNorm,
+                _cell = Cell_baseline(BatchNorm,
                             B_c,
                             F_d * B_d * fm[model_1_network[-1]],
                             F_c * B_c * fm[self.model_2_network[0]],
@@ -278,7 +279,7 @@ class Model_2 (nn.Module):
                             downup_sample,
                             pre_downup_sample)
             else:
-                _cell = Cell(BatchNorm, B_c, 
+                _cell = Cell_baseline(BatchNorm, B_c, 
                             F_2 * B_2 * fm[prev_prev_level],
                             F_2 * B_2 * fm[prev_level],
                             self.cell_arch_2,
@@ -347,111 +348,6 @@ class Model_2 (nn.Module):
             tic_2 = time.perf_counter()
 
             return y1, y2, tic_1 - tic, tic_2 - tic
-
-    def _init_weight(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, SynchronizedBatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-class ASPP_train(nn.Module):
-    def __init__(self, C, depth, num_classes, BatchNorm, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1):
-        super(ASPP_train, self).__init__()
-        self._C = C
-        self._depth = depth
-        self._num_classes = num_classes
-
-        self.global_pooling = nn.AdaptiveAvgPool2d(1)
-        self.relu = nn.ReLU(inplace=True)
-        self.aspp1 = conv(C, depth, kernel_size=1, stride=1, bias=False)
-        self.aspp2 = conv(C, depth, kernel_size=3, stride=1,
-                               dilation=int(6*mult), padding=int(6*mult),
-                               bias=False)
-        self.aspp3 = conv(C, depth, kernel_size=3, stride=1,
-                               dilation=int(12*mult), padding=int(12*mult),
-                               bias=False)
-        self.aspp4 = conv(C, depth, kernel_size=3, stride=1,
-                               dilation=int(18*mult), padding=int(18*mult),
-                               bias=False)
-        self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
-        self.aspp1_bn = BatchNorm(depth)
-        self.aspp2_bn = BatchNorm(depth)
-        self.aspp3_bn = BatchNorm(depth)
-        self.aspp4_bn = BatchNorm(depth)
-        self.aspp5_bn = BatchNorm(depth)
-        self.conv1 = conv(depth * 5, depth, kernel_size=1, stride=1,
-                               bias=False)
-        self.bn1 = BatchNorm(depth)
-        self._init_weight()
-
-    def forward(self, x):
-        x1 = self.aspp1(x)
-        x1 = self.aspp1_bn(x1)
-        x1 = self.relu(x1)
-        x2 = self.aspp2(x)
-        x2 = self.aspp2_bn(x2)
-        x2 = self.relu(x2)
-        x3 = self.aspp3(x)
-        x3 = self.aspp3_bn(x3)
-        x3 = self.relu(x3)
-        x4 = self.aspp4(x)
-        x4 = self.aspp4_bn(x4)
-        x4 = self.relu(x4)
-        x5 = self.global_pooling(x)
-        x5 = self.aspp5(x5)
-        x5 = self.aspp5_bn(x5)
-        x5 = self.relu(x5)
-        x5 = nn.Upsample((x.shape[2], x.shape[3]), mode='bilinear',
-                         align_corners=True)(x5)
-        x = torch.cat((x1, x2, x3, x4, x5), 1)
-        del x1
-        del x2
-        del x3
-        del x4
-        del x5
-
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        return x
-
-    def _init_weight(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, SynchronizedBatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-class Decoder(nn.Module):
-
-    def __init__(self, n_class, BatchNorm, output_stride=8):
-        super(Decoder, self).__init__()
-        self.output_stride = output_stride
-        self._conv = nn.Sequential(nn.Conv2d(304, 256, kernel_size=3, stride=1, padding=1, bias=False),
-                                    BatchNorm(256),
-                                    nn.ReLU(),
-                                    # 3x3 conv to refine the features
-                                    nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1, bias=False),
-                                    BatchNorm(256),
-                                    nn.ReLU(),
-                                    nn.Conv2d(256, n_class, kernel_size=1, stride=1))
-        self._init_weight()
-
-    def forward(self, x, low_level, size):
-        x = torch.cat((x, low_level), 1)
-        x = self._conv(x)
-        x = F.interpolate(x, size, mode='bilinear')
-
-        return x
 
     def _init_weight(self):
         for m in self.modules():
