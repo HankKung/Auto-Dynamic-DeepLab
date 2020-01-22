@@ -48,7 +48,7 @@ class Cell_baseline(nn.Module):
             self._ops.append(op)
 
 
-    def scale_dimension(self, dim, scale)
+    def scale_dimension(self, dim, scale):
         return int((float(dim) - 1.0) * scale + 1.0)
 
 
@@ -66,7 +66,7 @@ class Cell_baseline(nn.Module):
 
         s0 = prev_prev_input
         del prev_prev_input
-        s0 = F.interpolate(s0, [s1.shape[2], s1.shape[3]], mode='bilinear') 
+        s0 = F.interpolate(s0, [s1.shape[2], s1.shape[3]], mode='bilinear') \
             if s0.shape[2] != s1.shape[2] else s0
         s0 = self.pre_preprocess(s0)
         
@@ -130,7 +130,7 @@ class Model_1_baseline (nn.Module):
             BatchNorm(128),
         )
 
-        self.low_level_conv = nn.Sequential(nn.Conv2d(FB * 2**self.num_model_1_layers.[low_level_layer], 48, 1),
+        self.low_level_conv = nn.Sequential(nn.Conv2d(FB * 2**self.num_model_1_layers[low_level_layer], 48, 1),
                                     BatchNorm(48),
                                     nn.ReLU())
 

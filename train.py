@@ -48,7 +48,7 @@ class trainNew(object):
             """baseline_non_dense"""
             # new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
 
-             """ 40_5e_lr_38_31.91  """
+            """ 40_5e_lr_38_31.91  """
             new_network_arch = [1,2,3,2,3,2,2,1,2,1,1,2]
 
             low_level_layer = 1
@@ -241,7 +241,7 @@ def main():
 
     """ model setting """
     parser.add_argument('--network', type=str, default='searched_dense',
-                        choices=['searched_dense', 'searched_baseline', 'autodeeplab'])
+                        choices=['searched_dense', 'searched_baseline', 'autodeeplab', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
     parser.add_argument('--F_2', type=int, default=20)
     parser.add_argument('--F_1', type=int, default=20)

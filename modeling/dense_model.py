@@ -330,8 +330,8 @@ class Model_2 (nn.Module):
                             downup_sample,
                             dense=True)
             else:
-                dense_channel_list_2 = dense_channel_list_1 + 
-                                        [F_2 * fm[stride]] for stride in self.model_2_network[:i-1]
+                dense_channel_list_2 = dense_channel_list_1 + \
+                                        [F_2 * fm[stride] for stride in self.model_2_network[:i-1]]
                 _cell = Cell(BatchNorm,
                             B_2, 
                             dense_channel_list,

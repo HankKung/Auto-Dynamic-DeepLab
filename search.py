@@ -283,6 +283,8 @@ def main():
     parser = argparse.ArgumentParser(description="The Search")
 
     """ Search Network """
+    parser.add_argument('--network', type=str, default='supernet',
+                        choices=['searched_dense', 'searched_baseline', 'autodeeplab', 'supernet'])
     parser.add_argument('--opt_level', type=str, default='O0',
                         choices=['O0', 'O1', 'O2', 'O3'],
                         help='opt level for half percision training (default: O0)')

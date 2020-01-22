@@ -6,7 +6,7 @@ class Path(object):
         elif dataset == 'sbd':
             return '/home/user/models/research/deeplab/datasets/pascal_voc_seg/VOCdevkit/VOC2012'  # folder that contains dataset/.
         elif dataset == 'cityscapes':
-            return '/home/user/dataset/cityscapes/'     # foler that contains leftImg8bit/
+            return '../dataset/cityscapes/'     # foler that contains leftImg8bit/
         else:
             print('Dataset {} not available.'.format(dataset))
             raise NotImplementedError
