@@ -46,9 +46,10 @@ class Cell(nn.Module):
             op = OPS[primitive](C_out, 1, BatchNorm, eps=eps, momentum=momentum, affine=True)
             self._ops.append(op)
 
-    def scale_dimension(self, dim, scale):
 
+    def scale_dimension(self, dim, scale)
         return int((float(dim) - 1.0) * scale + 1.0)
+
 
     def forward(self, prev_prev_input, prev_input):
 

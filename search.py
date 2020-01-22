@@ -272,10 +272,11 @@ class Trainer(object):
         network_path_filename = os.path.join(dir_name,'network_path')
         genotype_filename_1 = os.path.join(dir_name, 'genotype_1')
         genotype_filename_2 = os.path.join(dir_name, 'genotype_2')
-
+        mIoU_saved_file_name = os.path.join(dir_name, 'miou')
         np.save(network_path_filename, result_paths)
         np.save(genotype_filename_1, genotype_1)
         np.save(genotype_filename_2, genotype_2)
+        np.save(new_pred, mIoU_saved_file_name)
         
 
 def main():
