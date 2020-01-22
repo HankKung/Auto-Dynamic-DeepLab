@@ -31,10 +31,12 @@ def make_data_loader(args, **kwargs):
         elif args.network != None:
             val_set = cityscapes.CityscapesSegmentation(args, split='val')
             test_set = cityscapes.CityscapesSegmentation(args, split='test')
-        val_loader = DataLoader(val_set, batch_size=args.test_batch_size, shuffle=False, **kwargs)
-        test_loader = DataLoader(test_set, batch_size=args.test_batch_size, shuffle=False, **kwargs)
         else:
             raise Exception('autodeeplab param not set properly')
+
+        val_loader = DataLoader(val_set, batch_size=args.test_batch_size, shuffle=False, **kwargs)
+        test_loader = DataLoader(test_set, batch_size=args.test_batch_size, shuffle=False, **kwargs)
+
 
         if args.network == 'supernet':
             return train_loader1, train_loader2, val_loader, test_loader, num_class

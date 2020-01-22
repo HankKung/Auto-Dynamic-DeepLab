@@ -22,7 +22,7 @@ class Cell(nn.Module):
                 network_arch,
                 C_out,
                 downup_sample,
-                dense=False,
+                dense_in=False,
                 dense_out=True):
 
         super(Cell, self).__init__()
@@ -330,19 +330,20 @@ class Model_2 (nn.Module):
                                         [F_2 * fm[stride] for stride in self.model_2_network[:i-1]]
                 _cell = Cell(BatchNorm,
                             B_2, 
-                            dense_channel_list,
+                            dense_channel_list_2,
                             F_2 * B_2 * fm[prev_level],
                             self.cell_arch_2,
                             self.model_2_network[i],
                             F_2 * fm[level],
                             downup_sample,
                             dense_in=True)
+
             else:
                 dense_channel_list_2 = dense_channel_list_1 + \
                                         [F_2 * fm[stride] for stride in self.model_2_network[:i-1]]
                 _cell = Cell(BatchNorm,
                             B_2, 
-                            dense_channel_list,
+                            dense_channel_list_2,
                             F_2 * B_2 * fm[prev_level],
                             self.cell_arch_2,
                             self.model_2_network[i],
@@ -373,6 +374,8 @@ class Model_2 (nn.Module):
                 if i < self.num_model_2_layers - 2:
                     _, y1, feature_map = self.cells[i](dense_feature_map[:-1], y1)
                     dense_feature_map.append(feature_map)
+                elif i == self.num_model_2_layers -1:
+                    y1 = self.cells[i](dense_feature_map, y1)
                 else:
                     y1 = self.cells[i](dense_feature_map[:-1], y1)
 
