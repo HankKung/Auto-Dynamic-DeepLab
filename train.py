@@ -37,12 +37,12 @@ class trainNew(object):
 
         cell_path_1 = os.path.join(args.saved_arch_path, 'genotype_1.npy')
         cell_path_2 = os.path.join(args.saved_arch_path, 'genotype_2.npy')
-        network_path_space = os.path.join(args.saved_arch_path, 'network_path_space.npy')
+        #network_path_space = os.path.join(args.saved_arch_path, 'network_path_space.npy')
 
         new_cell_arch_1 = np.load(cell_path_1)
         new_cell_arch_2 = np.load(cell_path_2)
  
-        new_network_arch = np.load(network_path_space)
+        #new_network_arch = np.load(network_path_space)
         
         if args.network == 'searched_dense':
             """baseline_non_dense"""
@@ -81,7 +81,7 @@ class trainNew(object):
                                 low_level_layer)
 
         """ Define Optimizer """
-        optimizer = torch.optim.SGD(model.parameters(), momentum=args.momentum,
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum,
                                     weight_decay=args.weight_decay, nesterov=args.nesterov)
 
         """ Define Criterion """

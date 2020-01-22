@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 
 class ASPP_train(nn.Module):
     def __init__(self, C, depth, num_classes, BatchNorm, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1):

@@ -22,7 +22,8 @@ class Cell(nn.Module):
                 network_arch,
                 C_out,
                 downup_sample,
-                dense=False):
+                dense=False,
+                dense_out=True):
 
         super(Cell, self).__init__()
         eps = 1e-5
@@ -31,6 +32,8 @@ class Cell(nn.Module):
         self.cell_arch = cell_arch
         self.downup_sample = downup_sample
         self.B = B
+        self.dense_in = dense_in
+        self.dense_out = dense_out
 
         self.preprocess = ReLUConvBN(
             prev_C, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
@@ -41,17 +44,17 @@ class Cell(nn.Module):
         elif downup_sample == 1:
             self.scale = 2
          
-        if dense == True:
+        if self.dense_in == True:
             self.pre_preprocess = nn.ModuleList()
-            for i in range(len(pre_pre_c)):
+            for i in range(len(prev_prev_C)):
                 self.pre_preprocess.append(
                     ReLUConvBN(prev_prev_C[i], C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True))
-            self.pre_preprocess_1x1 = ReLUConvBN(len(pre_pre_c) * C_out, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
+            self.pre_preprocess_1x1 = ReLUConvBN(len(prev_prev_C) * C_out, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
         else:
             self.pre_preprocess = ReLUConvBN(
                 prev_prev_C, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
-
-        self.dense_process = ReLUConvBN(C_out * B, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
+        if self.dense_out == True:
+            self.dense_process = ReLUConvBN(C_out * B, C_out, 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True)
 
         for x in self.cell_arch:
             primitive = PRIMITIVES[x[1]]
@@ -77,7 +80,7 @@ class Cell(nn.Module):
         s0 = prev_prev_input
         del prev_prev_input
 
-        if dense != True:
+        if self.dense_in != True:
             s0 = F.interpolate(s0, [s1.shape[2], s1.shape[3]], mode='bilinear') \
                     if s0.shape[2] != s1.shape[2] else s0
             s0 = self.pre_preprocess(s0)
@@ -107,9 +110,10 @@ class Cell(nn.Module):
             states.append(s)
 
         concat_feature = torch.cat(states[-self.B:], dim=1)
-
-        return prev_input, concat_feature, self.dense_process(concat_feature)
-
+        if self.dense_out:
+            return prev_input, concat_feature, self.dense_process(concat_feature)
+        else:
+            return concat_feature
 
 class Model_1 (nn.Module):
     def __init__(self,
@@ -129,20 +133,12 @@ class Model_1 (nn.Module):
         self.model_1_network = network_arch
         self.cell_arch = torch.from_numpy(cell_arch)
         self.num_model_1_layers = num_layers
+        self.low_level_layer = low_level_layer
         self._num_classes = num_classes
         self.decoder_1 = Decoder(num_classes, BatchNorm)
 
         FB = F * B
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
-        dense_out = FB * fm[dense_s]
-
-        if training:
-            self.low_level_layer = low_level_layer
-            self.dense_conv = []
-            for i in range(len(self.model_1_network)):
-                dense_conv.append(
-                    ReLUConvBN(FB * fm[self.model_1_network[i]], C_out, 1, 1, 0, BatchNorm, affine=True)
-                            )
 
         self.stem0 = nn.Sequential(
             nn.Conv2d(3, 64, 3, stride=2, padding=1),
@@ -209,7 +205,7 @@ class Model_1 (nn.Module):
                             self.model_1_network[i],
                             F * fm[level],
                             downup_sample,
-                            dense=True)
+                            dense_in=True)
        
             self.cells += [_cell]
 
@@ -227,7 +223,7 @@ class Model_1 (nn.Module):
         stem = self.stem0(x)
         stem0 = self.stem1(stem)
         stem1 = self.stem2(stem0)
-        two_last_inputs = (stem0, stem1)
+        two_last_inputs = [stem0, stem1]
         dense_feature_map = []
 
         for i in range(self.num_model_1_layers):       
@@ -237,7 +233,7 @@ class Model_1 (nn.Module):
                 dense_feature_map.append(feature_map)
 
             else:
-                _, x, feature_map = self.cells[i](feature_map[:-1], x)
+                _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
                 dense_feature_map.append(feature_map)
 
             if i == self.low_level_layer:
@@ -252,8 +248,7 @@ class Model_1 (nn.Module):
                 x = two_last_inputs[1]
             del feature_map
 
-        x = self.aspp_1(x)
-        return low_level, dense_feature_map, x
+        return low_level, dense_feature_map, x, self.aspp_1(x)
 
 
     def _init_weight(self):
@@ -285,7 +280,7 @@ class Model_2 (nn.Module):
         B_1 = args.B_1
 
         num_model_1_layers = args.num_model_1_layers
-        self.num_model_2_layers = len(network_arch) - len(num_model_1_layers)
+        self.num_model_2_layers = len(network_arch) - num_model_1_layers
 
         self.cells = nn.ModuleList()
         self.model_2_network = network_arch[num_model_1_layers:]
@@ -317,18 +312,31 @@ class Model_2 (nn.Module):
                             self.model_2_network[i],
                             F_2 * fm[level],
                             downup_sample,
-                            dense=True)
+                            dense_in=True)
             
             elif i == 1:
                 dense_channel_list_2 = dense_channel_list_1
                 _cell = Cell(BatchNorm, B_2,
-                            dense_channel_list,
+                            dense_channel_list_2,
                             F_2 * B_2 * fm[self.model_2_network[0]],
                             self.cell_arch_2,
                             self.model_2_network[i],
                             F_2 * fm[level],
                             downup_sample,
-                            dense=True)
+                            dense_in=True)
+
+            elif i < self.num_model_2_layers - 2:
+                dense_channel_list_2 = dense_channel_list_1 + \
+                                        [F_2 * fm[stride] for stride in self.model_2_network[:i-1]]
+                _cell = Cell(BatchNorm,
+                            B_2, 
+                            dense_channel_list,
+                            F_2 * B_2 * fm[prev_level],
+                            self.cell_arch_2,
+                            self.model_2_network[i],
+                            F_2 * fm[level],
+                            downup_sample,
+                            dense_in=True)
             else:
                 dense_channel_list_2 = dense_channel_list_1 + \
                                         [F_2 * fm[stride] for stride in self.model_2_network[:i-1]]
@@ -340,7 +348,8 @@ class Model_2 (nn.Module):
                             self.model_2_network[i],
                             F_2 * fm[level],
                             downup_sample,
-                            dense=True)
+                            dense_in=True,
+                            dense_out=False)
 
             self.cells += [_cell]
 
@@ -357,28 +366,27 @@ class Model_2 (nn.Module):
     def forward(self, x, evaluation=False):
         size = (x.shape[2], x.shape[3])
         if not evaluation:
-            low_level, dense_feature_map, y1 = self.model_1(x)
+            low_level, dense_feature_map, y1, y1_aspp = self.model_1(x)
             del x
-            y2 = y1 
 
             for i in range(self.num_model_2_layers):
                 if i < self.num_model_2_layers - 2:
-                    _, y2, feature_map = self.cells[i](dense_feature_map[:-1], y2)
-                    dense_feature_map.append(y2)
+                    _, y1, feature_map = self.cells[i](dense_feature_map[:-1], y1)
+                    dense_feature_map.append(feature_map)
                 else:
-                    _, y2, _ = self.cells[i](dense_feature_map[:-1], y2)
+                    y1 = self.cells[i](dense_feature_map[:-1], y1)
 
             del feature_map, dense_feature_map
 
-            y1 = F.interpolate(y1, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y1 = self.model_1.decoder_1(y1, low_level, size)
+            y1_aspp = F.interpolate(y1_aspp, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            y1_aspp = self.model_1.decoder_1(y1_aspp, low_level, size)
 
-            y2 = self.aspp_2(y2)
-            y2 = F.interpolate(y2, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y2 = self.decoder_2(y2, low_level, size)     
+            y1 = self.aspp_2(y1)
+            y1 = F.interpolate(y1, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            y1 = self.decoder_2(y1, low_level, size)     
             del low_level    
 
-            return y1, y2
+            return y1_aspp, y1
 
         else:
             torch.cuda.synchronize()
@@ -421,5 +429,4 @@ class Model_2 (nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
-            m.weight.data.fill_(1)
 
