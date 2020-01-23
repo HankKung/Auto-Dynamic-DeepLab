@@ -4,7 +4,6 @@ import numpy as np
 from tqdm import tqdm
 from mypath import Path
 from dataloaders import make_data_loader
-from modeling.sync_batchnorm.replicate import patch_replication_callback
 from utils.loss import SegmentationLosses
 from utils.calculate_weights import calculate_weigths_labels
 from utils.lr_scheduler import LR_Scheduler
@@ -14,8 +13,12 @@ from utils.metrics import Evaluator
 from torchviz import make_dot, make_dot_from_trace
 from modeling.baseline_model import *
 from modeling.dense_model import *
+from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
+from modeling.sync_batchnorm.replicate import patch_replication_callback
 
-APEX_AVAILABLE = False
+from apex import amp
+    
+
 torch.backends.cudnn.benchmark = True
 
 class trainNew(object):
@@ -29,56 +32,63 @@ class trainNew(object):
         """ Define Tensorboard Summary """
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
-        self.use_amp = False
+        self.use_amp = self.args.use_amp
 
         """ Define Dataloader """
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
-
-        cell_path_1 = os.path.join(args.saved_arch_path, 'genotype_1.npy')
-        cell_path_2 = os.path.join(args.saved_arch_path, 'genotype_2.npy')
-        #network_path_space = os.path.join(args.saved_arch_path, 'network_path_space.npy')
-
-        new_cell_arch_1 = np.load(cell_path_1)
-        new_cell_arch_2 = np.load(cell_path_2)
- 
-        #new_network_arch = np.load(network_path_space)
-        
+         
         if args.network == 'searched_dense':
-            """baseline_non_dense"""
-            # new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
-
             """ 40_5e_lr_38_31.91  """
-            new_network_arch = [1,2,3,2,3,2,2,1,2,1,1,2]
-
+            cell_path_1 = os.path.join(args.saved_arch_path, '40_5e_38_lr', 'genotype_1.npy')
+            cell_path_2 = os.path.join(args.saved_arch_path, '40_5e_38_lr','genotype_2.npy')
+            cell_arch_1 = np.load(cell_path_1)
+            cell_arch_2 = np.load(cell_path_2)
+            network_arch = [1, 2, 3, 2, 3, 2, 2, 1, 2, 1, 1, 2]
             low_level_layer = 1
 
-        elif args.network == 'autodeeplab':
-            new_network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
-            cell = np.zeros((10, 2))
-            cell[0] = [0, 7]
-            cell[1] = [1, 4]
-            cell[2] = [2, 4]
-            cell[3] = [3, 6]
-            cell[4] = [5, 4]
-            cell[5] = [8, 4]
-            cell[6] = [11, 5]
-            cell[7] = [13, 5]
-            cell[8] = [19, 7]
-            cell[9] = [18, 5]
-            cell=np.int_(cell)
-            new_cell_arch_1 = cell
-            new_cell_arch_2 = cell      
+            model = Model_2(new_network_arch,
+                cell_arch_1,
+                cell_arch_2,
+                self.nclass,
+                args,
+                low_level_layer)
+
+        elif args.network == 'searched_baseline':
+            cell_path_1 = os.path.join(args.saved_arch_path, 'searched_baseline', 'genotype_1.npy')
+            cell_path_2 = os.path.join(args.saved_arch_path, 'searched_baseline','genotype_2.npy')
+            cell_arch_1 = np.load(cell_path_1)
+            cell_arch_2 = np.load(cell_path_2)
+            network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
+            model = Model_2_baseline(network_arch,
+                                        cell_arch_1,
+                                        cell_arch_2,
+                                        self.nclass,
+                                        args,
+                                        low_level_layer)
+
+        elif args.network.startswith('autodeeplab'):
+            network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
+            cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype_1.npy')
+            cell_arch = np.load(cell_path)
             low_level_layer = 2
 
+            if args.network == 'autodeeplab-dense':
+                model = Model_2(network_arch,
+                                        cell_arch,
+                                        cell_arch,
+                                        self.nclass,
+                                        args,
+                                        low_level_layer)
 
-        """ Define network """
-        model = Model_2(new_network_arch,
-                                new_cell_arch_1,
-                                new_cell_arch_2,
-                                self.nclass,
-                                args,
-                                low_level_layer)
+            elif args.network == 'autodeeplab-baseline':
+                model = Model_2_baseline(network_arch,
+                                        cell_arch,
+                                        cell_arch,
+                                        self.nclass,
+                                        args,
+                                        low_level_layer)
+
 
         """ Define Optimizer """
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum,
@@ -105,6 +115,30 @@ class trainNew(object):
         """ Define lr scheduler """
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                       args.epochs, len(self.train_loader))
+
+        """ mixed precision """
+        if self.use_amp and args.cuda:
+            keep_batchnorm_fp32 = True if (self.opt_level == 'O2' or self.opt_level == 'O3') else None
+
+            """ fix for current pytorch version with opt_level 'O1' """
+            if self.opt_level == 'O1' and torch.__version__ < '1.3':
+                for module in self.model.modules():
+                    if isinstance(module, torch.nn.modules.batchnorm._BatchNorm) or isinstance(module, SynchronizedBatchNorm2d):
+                        """ Hack to fix BN fprop without affine transformation """
+                        if module.weight is None:
+                            module.weight = torch.nn.Parameter(
+                                torch.ones(module.running_var.shape, dtype=module.running_var.dtype,
+                                           device=module.running_var.device), requires_grad=False)
+                        if module.bias is None:
+                            module.bias = torch.nn.Parameter(
+                                torch.zeros(module.running_var.shape, dtype=module.running_var.dtype,
+                                            device=module.running_var.device), requires_grad=False)
+
+            # print(keep_batchnorm_fp32)
+            self.model, self.optimizer = amp.initialize(
+                self.model, self.optimizer, opt_level=self.opt_level,
+                keep_batchnorm_fp32=keep_batchnorm_fp32, loss_scale="dynamic")
+
 
         """ Using cuda """
         if args.cuda:
@@ -240,8 +274,7 @@ def main():
     parser = argparse.ArgumentParser(description="Dynamic DeepLab Training")
 
     """ model setting """
-    parser.add_argument('--network', type=str, default='searched_dense',
-                        choices=['searched_dense', 'searched_baseline', 'autodeeplab', 'supernet'])
+    parser.add_argument('--network', type=str, default='searched_dense', choices=['searched_dense', 'searched_baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
     parser.add_argument('--F_2', type=int, default=20)
     parser.add_argument('--F_1', type=int, default=20)
@@ -250,21 +283,16 @@ def main():
 
 
     """ dataset config"""
-    parser.add_argument('--dataset', type=str, default='cityscapes',
-                        choices=['pascal', 'coco', 'cityscapes'],
-                        help='dataset name (default: pascal)')
-    parser.add_argument('--workers', type=int, default=4,
-                        metavar='N', help='dataloader threads')
+    parser.add_argument('--dataset', type=str, default='cityscapes', choices=['pascal', 'coco', 'cityscapes'], help='dataset name (default: pascal)')
+    parser.add_argument('--workers', type=int, default=4, metavar='N', help='dataloader threads')
 
 
     """ training config """
-    parser.add_argument('--sync-bn', type=bool, default=None,
-                        help='whether to use sync bn (default: auto)')
-    parser.add_argument('--freeze-bn', type=bool, default=False,
-                        help='whether to freeze bn parameters (default: False)')
-    parser.add_argument('--loss-type', type=str, default='ce',
-                        choices=['ce', 'focal'],
-                        help='loss func type (default: ce)')
+    parser.add_argument('--use-amp', type=bool, default=False)
+    parser.add_argument('--opt_level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
+    parser.add_argument('--sync-bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
+    parser.add_argument('--freeze-bn', type=bool, default=False, help='whether to freeze bn parameters (default: False)')
+    parser.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'focal'])
     parser.add_argument('--epochs', type=int, default=None, metavar='N')
     parser.add_argument('--start_epoch', type=int, default=0)
     parser.add_argument('--batch-size', type=int, default=None, metavar='N')
@@ -275,42 +303,31 @@ def main():
     """ optimizer params """
     parser.add_argument('--lr', type=float, default=None, metavar='LR')
     parser.add_argument('--min_lr', type=float, default=0)
-    parser.add_argument('--lr-scheduler', type=str, default='poly',
-                        choices=['poly', 'step', 'cos'])
+    parser.add_argument('--lr-scheduler', type=str, default='poly', choices=['poly', 'step', 'cos'])
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M')
     parser.add_argument('--clean-module', type=int, default=0)
-    parser.add_argument('--weight-decay', type=float, default=4e-5,
-                        metavar='M', help='w-decay (default: 4e-5)')
-    parser.add_argument('--nesterov', action='store_true', default=False,
-                        help='whether use nesterov (default: False)')
+    parser.add_argument('--weight-decay', type=float, default=4e-5, metavar='M', help='w-decay (default: 4e-5)')
+    parser.add_argument('--nesterov', action='store_true', default=False, help='whether use nesterov (default: False)')
 
 
     """ cuda, seed and logging """
     parser.add_argument('--no-cuda', action='store_true', default=False)
-    parser.add_argument('--gpu-ids', type=str, default='0',
-                        help='use which gpu to train, must be a \
-                        comma-separated list of integers only (default=0)')
-    parser.add_argument('--seed', type=int, default=1, metavar='S',
-                        help='random seed (default: 1)')
+    parser.add_argument('--gpu-ids', type=str, default='0', help='use which gpu to train, must be a comma-separated list of integers only (default=0)')
+    parser.add_argument('--seed', type=int, default=1, metavar='S')
 
 
     """ checking point """
-    parser.add_argument('--resume', type=str, default=None,
-                        help='put the path to resuming file if needed')
-    parser.add_argument('--saved-arch-path', type=str, default=None,
-                        help='put the path to alphas and betas')
-    parser.add_argument('--checkname', type=str, default=None,
-                        help='set the checkpoint name')
+    parser.add_argument('--resume', type=str, default=None, help='put the path to resuming file if needed')
+    parser.add_argument('--saved-arch-path', type=str, default=None, help='put the path to alphas and betas')
+    parser.add_argument('--checkname', type=str, default=None, help='set the checkpoint name')
 
 
     """ finetuning pre-trained models """
-    parser.add_argument('--ft', action='store_true', default=False,
-                        help='finetuning on a different dataset')
+    parser.add_argument('--ft', action='store_true', default=False, help='finetuning on a different dataset')
 
 
     """ evaluation option """
-    parser.add_argument('--eval-interval', type=int, default=100,
-                        help='evaluuation interval (default: 1)')
+    parser.add_argument('--eval-interval', type=int, default=100, help='evaluuation interval (default: 1)')
     
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()

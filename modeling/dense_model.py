@@ -395,31 +395,32 @@ class Model_2 (nn.Module):
             torch.cuda.synchronize()
             tic = time.perf_counter()
 
-            low_level, dense_feature_map, y1 = self.model_1(x)
+            low_level, dense_feature_map, y1, y1_aspp = self.model_1(x)
             del x
-            y2 = y1 
 
-            y1 = F.interpolate(y1, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y1 = self.model_1.decoder(y1, low_level, size)
+            y1_aspp = F.interpolate(y1_aspp, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            y1_aspp = self.model_1.decoder(y1_aspp, low_level, size)
 
             torch.cuda.synchronize()
             tic_1 = time.perf_counter()
 
             for i in range(self.num_model_2_layers):
                 if i < self.num_model_2_layers - 2:
-                    _, y2, feature_map = self.cells[i](dense_feature_map[:-1], y2)
-                    dense_feature_map.append(y2)
+                    _, y1, feature_map = self.cells[i](dense_feature_map[:-1], y1)
+                    dense_feature_map.append(feature_map)
+                elif i == self.num_model_2_layers -1:
+                    y1 = self.cells[i](dense_feature_map, y1)
                 else:
-                    _, y2, _ = self.cells[i](dense_feature_map[:-1], y2)
+                    y1 = self.cells[i](dense_feature_map[:-1], y1)
 
-            y2 = self.aspp_2(y2)
-            y2 = F.interpolate(y2, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y2 = self.decoder_2(y2, low_level, size)
+            y1 = self.aspp_2(y1)
+            y1 = F.interpolate(y1, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            y1 = self.decoder_2(y1, low_level, size)     
 
             torch.cuda.synchronize()
             tic_2 = time.perf_counter()
 
-            return y1, y2, tic_1 - tic, tic_2 - tic
+            return y1_aspp, y1, tic_1 - tic, tic_2 - tic
 
 
     def _init_weight(self):
