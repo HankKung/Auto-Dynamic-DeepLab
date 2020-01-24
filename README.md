@@ -29,3 +29,4 @@ bash retrain_cityscapes
 [Synchronized-BatchNorm-PyTorch](https://github.com/vacancy/Synchronized-BatchNorm-PyTorch)
 
 
+[SqueezeNAS](https://github.com/ashaw596/squeezenas)
