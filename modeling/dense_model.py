@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn.functional as F
 
 from modeling.genotypes import PRIMITIVES
-from modeling.aspp_train import ASPP_train
+from modeling.aspp_train import *
 from modeling.decoder import Decoder
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.operations import *
@@ -125,7 +125,8 @@ class Model_1 (nn.Module):
                 criterion=None,
                 F=20,
                 B=4,
-                low_level_layer=1):
+                low_level_layer=1,
+                lr_aspp=False):
 
         super(Model_1, self).__init__()
         
@@ -135,7 +136,7 @@ class Model_1 (nn.Module):
         self.num_model_1_layers = num_layers
         self.low_level_layer = low_level_layer
         self._num_classes = num_classes
-        self.decoder_1 = Decoder(num_classes, BatchNorm)
+        self.lr_aspp = lr_aspp
 
         FB = F * B
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
@@ -155,10 +156,6 @@ class Model_1 (nn.Module):
             BatchNorm(128),
         )
 
-        self.low_level_conv = nn.Sequential(
-                                    nn.Conv2d(FB * 2** self.model_1_network[low_level_layer], 48, 1),
-                                    BatchNorm(48),
-                                    nn.ReLU())
 
         for i in range(self.num_model_1_layers):
             level = self.model_1_network[i]
@@ -214,12 +211,24 @@ class Model_1 (nn.Module):
         elif self.model_1_network[-1] == 2:
             mult =1
 
-        self.aspp_1 = ASPP_train(FB * fm[self.model_1_network[-1]], \
+
+        if self.lr_aspp:
+            self.aspp_1 = ASPP_LR(FB * fm[self.model_1_network[-1]], \
+                                    FB * 2** self.model_1_network[low_level_layer] 128)
+        else:
+            self.aspp_1 = ASPP_train(FB * fm[self.model_1_network[-1]], \
                                       256, num_classes, BatchNorm, mult=mult)
+            self.low_level_conv = nn.Sequential(
+                                    nn.Conv2d(FB * 2** self.model_1_network[low_level_layer], 48, 1),
+                                    BatchNorm(48),
+                                    nn.ReLU())
+            self.decoder_1 = Decoder(num_classes, BatchNorm)
+
         self._init_weight()
 
 
     def forward(self, x):
+        size = (x.shape[2], x.shape[3])
         stem = self.stem0(x)
         stem0 = self.stem1(stem)
         stem1 = self.stem2(stem0)
@@ -237,8 +246,8 @@ class Model_1 (nn.Module):
                 dense_feature_map.append(feature_map)
 
             if i == self.low_level_layer:
-                low_level = two_last_inputs[1]
-                low_level = self.low_level_conv(low_level)
+                low_level_feature = two_last_inputs[1]
+                
             if i == 0:
                 del stem
             elif i == 1:
@@ -248,7 +257,15 @@ class Model_1 (nn.Module):
                 x = two_last_inputs[1]
             del feature_map
 
-        return low_level, dense_feature_map, x, self.aspp_1(x)
+        if self.lr_aspp:
+            y = self.aspp_1(x)
+            y = F.interpolate(y, size, mode='bilinear')
+        else:
+            y = self.aspp_1(x)
+            low_level = self.low_level_conv(low_level)
+            y = self.decoder_1(y, low_level, size)
+
+        return low_level_feature, dense_feature_map, x, y
 
 
     def _init_weight(self):
@@ -289,7 +306,7 @@ class Model_2 (nn.Module):
 
         model_1_network = network_arch[:args.num_model_1_layers]
         self.model_1 = Model_1(model_1_network, cell_arch_1, num_classes, num_model_1_layers, \
-                                       BatchNorm, F=F_1, B=B_1, low_level_layer=low_level_layer)
+                                       BatchNorm, F=F_1, B=B_1, low_level_layer=low_level_layer, lr_aspp=args.lr_aspp)
         self.decoder_2 = Decoder(num_classes, BatchNorm)
           
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
@@ -359,6 +376,10 @@ class Model_2 (nn.Module):
         elif self.model_2_network[-1] == 2:
             mult =1
 
+        self.low_level_conv = nn.Sequential(
+                                    nn.Conv2d(F_1 * B_1 * 2**model_1_network[low_level_layer], 48, 1),
+                                    BatchNorm(48),
+                                    nn.ReLU())
         self.aspp_2 = ASPP_train(F_2 * B_2 * fm[self.model_2_network[-1]], 
                                      256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
@@ -367,60 +388,54 @@ class Model_2 (nn.Module):
     def forward(self, x, evaluation=False):
         size = (x.shape[2], x.shape[3])
         if not evaluation:
-            low_level, dense_feature_map, y1, y1_aspp = self.model_1(x)
-            del x
+            low_level, dense_feature_map, x, y1 = self.model_1(x)
+            low_level = self.low_level_conv(low_level)
 
             for i in range(self.num_model_2_layers):
                 if i < self.num_model_2_layers - 2:
-                    _, y1, feature_map = self.cells[i](dense_feature_map[:-1], y1)
+                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
                     dense_feature_map.append(feature_map)
                 elif i == self.num_model_2_layers -1:
-                    y1 = self.cells[i](dense_feature_map, y1)
+                    x = self.cells[i](dense_feature_map, x)
                 else:
-                    y1 = self.cells[i](dense_feature_map[:-1], y1)
+                    x = self.cells[i](dense_feature_map[:-1], x)
 
             del feature_map, dense_feature_map
 
-            y1_aspp = F.interpolate(y1_aspp, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y1_aspp = self.model_1.decoder_1(y1_aspp, low_level, size)
-
-            y1 = self.aspp_2(y1)
-            y1 = F.interpolate(y1, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y1 = self.decoder_2(y1, low_level, size)     
+            x = self.aspp_2(x)
+            x = F.interpolate(x, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            x = self.decoder_2(x, low_level, size)     
             del low_level    
 
-            return y1_aspp, y1
+            return y1, x+y1
 
         else:
             torch.cuda.synchronize()
             tic = time.perf_counter()
 
-            low_level, dense_feature_map, y1, y1_aspp = self.model_1(x)
-            del x
-
-            y1_aspp = F.interpolate(y1_aspp, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y1_aspp = self.model_1.decoder(y1_aspp, low_level, size)
+            low_level, dense_feature_map, x, y1 = self.model_1(x)
+            low_level = self.low_level_conv(low_level)
 
             torch.cuda.synchronize()
             tic_1 = time.perf_counter()
 
             for i in range(self.num_model_2_layers):
                 if i < self.num_model_2_layers - 2:
-                    _, y1, feature_map = self.cells[i](dense_feature_map[:-1], y1)
+                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
                     dense_feature_map.append(feature_map)
                 elif i == self.num_model_2_layers -1:
-                    y1 = self.cells[i](dense_feature_map, y1)
+                    x = self.cells[i](dense_feature_map, x)
                 else:
-                    y1 = self.cells[i](dense_feature_map[:-1], y1)
+                    x = self.cells[i](dense_feature_map[:-1], x)
 
-            y1 = self.aspp_2(y1)
-            y1 = F.interpolate(y1, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y1 = self.decoder_2(y1, low_level, size)     
+            x = self.aspp_2(x)
+            x = F.interpolate(x, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            x = self.decoder_2(x, low_level, size)     
 
             torch.cuda.synchronize()
             tic_2 = time.perf_counter()
 
-            return y1_aspp, y1, tic_1 - tic, tic_2 - tic
+            return y1, x+y1, tic_1 - tic, tic_2 - tic
 
 
     def _init_weight(self):

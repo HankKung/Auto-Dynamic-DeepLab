@@ -74,3 +74,36 @@ class ASPP_train(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
+
+class ASPP_Lite(nn.Module):
+    def __init__(self, in_channels, low_level_channels, mid_channels, num_classes):
+        super().__init__()
+        self._1x1_TL = Conv_BN_ReLU(in_channels, mid_channels, kernel=1)
+        self._1x1_BL = nn.Conv2d(in_channels, mid_channels, kernel_size=1)  # TODO: bias=False?
+        self._1x1_TR = nn.Conv2d(mid_channels, num_classes, kernel_size=1)
+        self._1x1_BR = nn.Conv2d(low_level_channels, num_classes, kernel_size=1)
+        self.avgpool = torch.nn.AvgPool2d(kernel_size=49, stride=[16, 20], count_include_pad=False)
+
+    def forward(self, x, low_level_feature):
+        t1 = self._1x1_TL(x)
+        B, C, H, W = t1.shape
+        t2 = self.avgpool(x)
+        t2 = self._1x1_BL(t2)
+        t2 = torch.sigmoid(t2)
+        t2 = F.interpolate(t2, size=(H, W), mode='bilinear', align_corners=False)
+        t3 = t1 * t2
+        t3 = F.interpolate(t3, scale_factor=2, mode='bilinear', align_corners=False)
+        t3 = self._1x1_TR(t3)
+        t4 = self._1x1_BR(low_level_feature)
+        return t3 + t4
+
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                torch.nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, SynchronizedBatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
