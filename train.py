@@ -47,12 +47,12 @@ class trainNew(object):
             network_arch = [1, 2, 3, 2, 3, 2, 2, 1, 2, 1, 1, 2]
             low_level_layer = 0
 
-            model = Model_2(new_network_arch,
-                cell_arch_1,
-                cell_arch_2,
-                self.nclass,
-                args,
-                low_level_layer)
+            model = Model_2(network_arch,
+                            cell_arch_1,
+                            cell_arch_2,
+                            self.nclass,
+                            args,
+                            low_level_layer)
 
         elif args.network == 'searched_baseline':
             cell_path_1 = os.path.join(args.saved_arch_path, 'searched_baseline', 'genotype_1.npy')

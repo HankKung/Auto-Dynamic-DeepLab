@@ -213,8 +213,8 @@ class Model_1 (nn.Module):
 
 
         if self.lr_aspp:
-            self.aspp_1 = ASPP_LR(FB * fm[self.model_1_network[-1]], \
-                                    FB * 2** self.model_1_network[low_level_layer] 128)
+            self.aspp_1 = ASPP_Lite(FB * fm[self.model_1_network[-1]], \
+                                    FB * 2** self.model_1_network[low_level_layer], 128, num_classes, BatchNorm)
         else:
             self.aspp_1 = ASPP_train(FB * fm[self.model_1_network[-1]], \
                                       256, num_classes, BatchNorm, mult=mult)

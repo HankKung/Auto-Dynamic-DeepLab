@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
+from modeling.operations import ReLUConvBN
 
 class ASPP_train(nn.Module):
     def __init__(self, C, depth, num_classes, BatchNorm, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1):
@@ -76,9 +77,9 @@ class ASPP_train(nn.Module):
 
 
 class ASPP_Lite(nn.Module):
-    def __init__(self, in_channels, low_level_channels, mid_channels, num_classes):
+    def __init__(self, in_channels, low_level_channels, mid_channels, num_classes, BatchNorm):
         super().__init__()
-        self._1x1_TL = Conv_BN_ReLU(in_channels, mid_channels, kernel=1)
+        self._1x1_TL = ReLUConvBN(in_channels, mid_channels, 1, 1, 0, BatchNorm)
         self._1x1_BL = nn.Conv2d(in_channels, mid_channels, kernel_size=1)  # TODO: bias=False?
         self._1x1_TR = nn.Conv2d(mid_channels, num_classes, kernel_size=1)
         self._1x1_BR = nn.Conv2d(low_level_channels, num_classes, kernel_size=1)
