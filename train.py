@@ -45,7 +45,7 @@ class trainNew(object):
             cell_arch_1 = np.load(cell_path_1)
             cell_arch_2 = np.load(cell_path_2)
             network_arch = [1, 2, 3, 2, 3, 2, 2, 1, 2, 1, 1, 2]
-            low_level_layer = 1
+            low_level_layer = 0
 
             model = Model_2(new_network_arch,
                 cell_arch_1,
@@ -116,6 +116,9 @@ class trainNew(object):
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                       args.epochs, len(self.train_loader))
 
+        if args.cuda:
+            self.model = self.model.cuda()
+
         """ mixed precision """
         if self.use_amp and args.cuda:
             keep_batchnorm_fp32 = True if (self.opt_level == 'O2' or self.opt_level == 'O3') else None
@@ -141,11 +144,20 @@ class trainNew(object):
 
 
         """ Using cuda """
-        if args.cuda:
-            if args.sync_bn:
-                self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
-                patch_replication_callback(self.model)
-            self.model = self.model.cuda()
+        # if args.cuda:
+        #     if args.sync_bn:
+        #         self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
+        #         patch_replication_callback(self.model)
+        #     self.model = self.model.cuda()
+
+
+        if args.cuda and len(self.args.gpu_ids) >1:
+            if self.opt_level == 'O2' or self.opt_level == 'O3':
+                print('currently cannot run with nn.DataParallel and optimization level', self.opt_level)
+            self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
+            patch_replication_callback(self.model)
+            print('training on multiple-GPUs')
+
 
         """ Resuming checkpoint """
         self.best_pred = 0.0
@@ -198,7 +210,12 @@ class trainNew(object):
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
             loss = (loss_1 + loss_2)/2
-            loss.backward()
+            
+            if self.use_amp:
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
 
             self.optimizer.step()
             train_loss += loss.item()
@@ -276,6 +293,7 @@ def main():
     """ model setting """
     parser.add_argument('--network', type=str, default='searched_dense', choices=['searched_dense', 'searched_baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
+    parser.add_argument('--lr-aspp', type=bool, default=False)
     parser.add_argument('--F_2', type=int, default=20)
     parser.add_argument('--F_1', type=int, default=20)
     parser.add_argument('--B_2', type=int, default=5)
