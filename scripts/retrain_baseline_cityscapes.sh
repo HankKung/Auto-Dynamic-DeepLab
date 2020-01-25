@@ -1,7 +1,14 @@
-CUDA_VISIBLE_DEVICES=1 python ../train.py \
- --batch-size 12 --dataset cityscapes --checkname baseline_1m \
- --epoch 4200 --filter_multiplier 20 --backbone autodeeplab \
- --network autodeeplab --use-balanced-weights \
- --resize 1025 --crop_size 769 \
- --workers 12 --lr 0.05 --nesterov \
+CUDA_VISIBLE_DEVICES=0 python ../train.py \
+ --checkname autodeeplab-baseline \
+ --network autodeeplab-baseline \
+ --filter_multiplier 20 \
+ --dataset cityscapes \
+ --batch-size 16 \
+ --workers 4 \
+ --epoch 2150 \
+ --use-balanced-weights \
+ --use-amp True \
+ --opt_level O1 \
+ --lr 0.05 \
+ --nesterov \
  --saved-arch-path ../searched_arch
