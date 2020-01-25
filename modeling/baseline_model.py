@@ -66,13 +66,12 @@ class Cell_baseline(nn.Module):
 
         s0 = prev_prev_input
         del prev_prev_input
+
         s0 = F.interpolate(s0, [s1.shape[2], s1.shape[3]], mode='bilinear') \
             if s0.shape[2] != s1.shape[2] else s0
         s0 = self.pre_preprocess(s0)
         
         states = [s0, s1]
-        del s0
-        del s1
 
         offset = 0
         ops_index = 0
@@ -101,7 +100,7 @@ class Model_1_baseline (nn.Module):
                 num_layers,
                 BatchNorm,
                 F=20,
-                B=4,
+                B=5,
                 low_level_layer=1):
 
         super(Model_1_baseline, self).__init__()
@@ -152,8 +151,7 @@ class Model_1_baseline (nn.Module):
                             self.cell_arch,
                             self.model_1_network[i],
                             F * fm[level],                        
-                            downup_sample,
-                            pre_downup_sample) 
+                            downup_sample) 
                 
             elif i == 1:
                 pre_downup_sample = int(0 - level)
@@ -164,8 +162,7 @@ class Model_1_baseline (nn.Module):
                             self.cell_arch,
                             self.model_1_network[i],
                             F * fm[level],
-                            downup_sample,
-                            pre_downup_sample)
+                            downup_sample)
             else:
                 _cell = Cell_baseline(BatchNorm,
                             B, 
@@ -174,8 +171,7 @@ class Model_1_baseline (nn.Module):
                             self.cell_arch,
                             self.model_1_network[i],
                             F * fm[level],
-                            downup_sample,
-                            pre_downup_sample)
+                            downup_sample)
        
             self.cells += [_cell]
 
@@ -183,10 +179,7 @@ class Model_1_baseline (nn.Module):
             mult = 2
         elif self.model_1_network[-1] == 2:
             mult =1
-        elif self.model_1_network[-1] ==3:
-            mult = 0.5
-        else:
-            return
+
         self.aspp_2 = ASPP_train(FB * fm[self.model_1_network[-1]], \
                                       256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
@@ -203,15 +196,12 @@ class Model_1_baseline (nn.Module):
 
             if i == self.low_level_layer:
                 low_level = two_last_inputs[1]
-                low_level = self.low_level_conv(low_level)
-            if i == 0:
-                del stem
-            elif i == 1:
-                del stem0
-            elif i==2:
-                del stem1
+                low_level_feature = self.low_level_conv(low_level)
 
-        return low_level, two_last_inputs, self.aspp_1(two_last_inputs[-1])
+        x = two_last_inputs[-1]
+        x = self.aspp_1(x)
+        x = self.decoder_1(x)
+        return low_level, two_last_inputs, x
 
     def _init_weight(self):
         for m in self.modules():
@@ -253,40 +243,36 @@ class Model_2_baseline (nn.Module):
             prev_prev_level = self.model_2_network[i-2]
 
             downup_sample = int(prev_level - level)
-            pre_downup_sample = int(prev_prev_level - level)
 
             if i == 0:
                 downup_sample = int(model_1_network[-1] - self.model_2_network[0])
                 pre_downup_sample = int(model_1_network[-2] - self.model_2_network[0])
                 _cell = Cell_baseline(BatchNorm, B_2, 
-                            F_1 * B_1 * fm[model_1_network[-2]],
-                            F_1 * B_1 * fm[model_1_network[-1]],
-                            self.cell_arch_2,
-                            self.model_2_network[i],
-                            F_2 * fm[level],
-                            downup_sample,
-                            pre_downup_sample)
+                                        F_1 * B_1 * fm[model_1_network[-2]],
+                                        F_1 * B_1 * fm[model_1_network[-1]],
+                                        self.cell_arch_2,
+                                        self.model_2_network[i],
+                                        F_2 * fm[level],
+                                        downup_sample)
             
             elif i == 1:
                 pre_downup_sample = int(model_1_network[-1] - self.model_2_network[1])
                 _cell = Cell_baseline(BatchNorm,
-                            B_c,
-                            F_d * B_d * fm[model_1_network[-1]],
-                            F_c * B_c * fm[self.model_2_network[0]],
-                            self.cell_arch_2,
-                            self.model_2_network[i],
-                            F_2 * fm[level],
-                            downup_sample,
-                            pre_downup_sample)
+                                        B_2,
+                                        F_1 * B_1 * fm[model_1_network[-1]],
+                                        F_2 * B_2 * fm[self.model_2_network[0]],
+                                        self.cell_arch_2,
+                                        self.model_2_network[i],
+                                        F_2 * fm[level],
+                                        downup_sample)
             else:
-                _cell = Cell_baseline(BatchNorm, B_c, 
-                            F_2 * B_2 * fm[prev_prev_level],
-                            F_2 * B_2 * fm[prev_level],
-                            self.cell_arch_2,
-                            self.model_2_network[i],
-                            F_2 * fm[level],
-                            downup_sample,
-                            pre_downup_sample)
+                _cell = Cell_baseline(BatchNorm, B_2, 
+                                        F_2 * B_2 * fm[prev_prev_level],
+                                        F_2 * B_2 * fm[prev_level],
+                                        self.cell_arch_2,
+                                        self.model_2_network[i],
+                                        F_2 * fm[level],
+                                        downup_sample)
 
             self.cells += [_cell]
 
@@ -295,7 +281,9 @@ class Model_2_baseline (nn.Module):
         elif self.num_model_2_layers[-1] == 2:
             mult =1
 
-
+        self.low_level_conv = nn.Sequential(nn.Conv2d(F_1 * B_1 * 2**self.num_model_1_layers[low_level_layer], 48, 1),
+                                BatchNorm(48),
+                                nn.ReLU())
         self.aspp_2 = ASPP_train(F_2 * B_2 * fm[self.num_model_2_layers[-1]], 
                                      256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
@@ -304,22 +292,16 @@ class Model_2_baseline (nn.Module):
         size = (x.shape[2], x.shape[3])
         if not evaluation:
             low_level, two_last_inputs, y1 = self.model_1(x)
-            del x
+
             for i in range(self.num_model_2_layers):
                 two_last_inputs = self.cells[i](
                     two_last_inputs[0], two_last_inputs[1])
                 
             y2 = two_last_inputs[-1]
-            del two_last_inputs
 
-            y1 = F.interpolate(y1, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y1 = self.model_1.decoder_1(y1, low_level, size)
-
-            y2 = self.aspp_cloud(y2)
-
-            y2 = F.interpolate(y2, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y2 = self.decoder(y2, low_level, size)     
-            del low_level    
+            y2 = self.aspp_2(y2)
+            low_level = self.low_level_conv(low_level)
+            y2 = self.decoder_2(y2, low_level, size)     
 
             return y1, y2
 
@@ -328,9 +310,6 @@ class Model_2_baseline (nn.Module):
             tic = time.perf_counter()
 
             low_level, two_last_inputs, y1 = self.device(x)
-            del x
-            y1 = F.interpolate(y1, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            y1 = self.device.decoder(y1, low_level, size)
 
             torch.cuda.synchronize()
             tic_1 = time.perf_counter()
@@ -341,7 +320,7 @@ class Model_2_baseline (nn.Module):
 
             y2 = two_last_inputs[-1]
             y2 = self.aspp_2(y2)
-            y2 = F.interpolate(y2, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
+            low_level = self.low_level_conv(low_level)
             y2 = self.decoder_2(y2, low_level, size)
 
             torch.cuda.synchronize()

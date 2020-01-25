@@ -257,7 +257,6 @@ class Model_1 (nn.Module):
         else:
             y = self.aspp_1(x)
             low_level = self.low_level_conv(low_level_feature)
-            y = F.interpolate(y, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
             y = self.decoder_1(y, low_level, size)
 
         return low_level_feature, dense_feature_map, x, y
@@ -398,7 +397,6 @@ class Model_2 (nn.Module):
             del feature_map, dense_feature_map
 
             x = self.aspp_2(x)
-            x = F.interpolate(x, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
             x = self.decoder_2(x, low_level, size)     
             del low_level    
 

@@ -18,6 +18,8 @@ class Decoder(nn.Module):
         self._init_weight()
 
     def forward(self, x, low_level, size):
+        x = F.interpolate(x, [low_level.shape[2], low_level.shape[3]], mode='bilinear') \
+            if x.shape[2] != low_level.shape[2] else x
         x = torch.cat((x, low_level), 1)
         x = self._conv(x)
         x = F.interpolate(x, size, mode='bilinear')
