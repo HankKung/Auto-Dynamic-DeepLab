@@ -248,21 +248,16 @@ class Model_1 (nn.Module):
             if i == self.low_level_layer:
                 low_level_feature = two_last_inputs[1]
                 
-            if i == 0:
-                del stem
-            elif i == 1:
-                del stem0
-            elif i == 2:
-                del stem1
                 x = two_last_inputs[1]
             del feature_map
 
         if self.lr_aspp:
-            y = self.aspp_1(x)
+            y = self.aspp_1(x, low_level_feature)
             y = F.interpolate(y, size, mode='bilinear')
         else:
             y = self.aspp_1(x)
-            low_level = self.low_level_conv(low_level)
+            low_level = self.low_level_conv(low_level_feature)
+            y = F.interpolate(y, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
             y = self.decoder_1(y, low_level, size)
 
         return low_level_feature, dense_feature_map, x, y

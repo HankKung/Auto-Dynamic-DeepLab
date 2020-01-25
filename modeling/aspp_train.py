@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.operations import ReLUConvBN
 
@@ -93,7 +95,8 @@ class ASPP_Lite(nn.Module):
         t2 = torch.sigmoid(t2)
         t2 = F.interpolate(t2, size=(H, W), mode='bilinear', align_corners=False)
         t3 = t1 * t2
-        t3 = F.interpolate(t3, scale_factor=2, mode='bilinear', align_corners=False)
+        h , w = int((float(t3.shape[2]) - 1.0) * 2 + 1.0), int((float(t3.shape[3]) - 1.0) * 2 + 1.0)
+        t3 = F.interpolate(t3, [h, w], mode='bilinear', align_corners=False)
         t3 = self._1x1_TR(t3)
         t4 = self._1x1_BR(low_level_feature)
         return t3 + t4
@@ -108,3 +111,6 @@ class ASPP_Lite(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
+
+    def scale_dimension(self, dim, scale):
+        return int((float(dim) - 1.0) * scale + 1.0)

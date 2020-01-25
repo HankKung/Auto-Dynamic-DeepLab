@@ -33,6 +33,7 @@ class trainNew(object):
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
         self.use_amp = self.args.use_amp
+        self.opt_level = self.args.opt_level
 
         """ Define Dataloader """
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
@@ -293,7 +294,7 @@ def main():
     """ model setting """
     parser.add_argument('--network', type=str, default='searched_dense', choices=['searched_dense', 'searched_baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
-    parser.add_argument('--lr-aspp', type=bool, default=False)
+    parser.add_argument('--lr-aspp', type=bool, default=None)
     parser.add_argument('--F_2', type=int, default=20)
     parser.add_argument('--F_1', type=int, default=20)
     parser.add_argument('--B_2', type=int, default=5)

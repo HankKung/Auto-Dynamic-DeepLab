@@ -12,4 +12,4 @@ CUDA_VISIBLE_DEVICES=0 python ../train.py \
 --lr 0.05 \
 --nesterov \
 --gpu-ids 0 \
---saved-arch-path ../searched_arch/40_5e_38_lr
+--saved-arch-path ../searched_arch/
