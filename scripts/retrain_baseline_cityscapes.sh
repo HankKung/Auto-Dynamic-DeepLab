@@ -11,5 +11,4 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python ../train.py \
  --lr 0.05 \
  --nesterov \
  --gpu-ids 0,1,2,3 \
- --loss-in-forward True \
  --saved-arch-path ../searched_arch

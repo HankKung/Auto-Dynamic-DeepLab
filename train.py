@@ -61,6 +61,7 @@ class trainNew(object):
             cell_arch_1 = np.load(cell_path_1)
             cell_arch_2 = np.load(cell_path_2)
             network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
+            low_level_layer = 1
             model = Model_2_baseline(network_arch,
                                         cell_arch_1,
                                         cell_arch_2,
@@ -206,31 +207,19 @@ class trainNew(object):
                 image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            if self.args.loss_in_forward:
-                output_1, output_2 = self.model(image)
 
-                loss_1 = self.criterion(output_1, target)
-                loss_2 = self.criterion(output_2, target)
-                loss = (loss_1 + loss_2)/2
-                
-                if self.use_amp:
-                    with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                        scaled_loss.backward()
-                else:
-                    loss.backward()
-
+            output_1, output_2 = self.model(image)
+            loss_1 = self.criterion(output_1, target)
+            loss_2 = self.criterion(output_2, target)
+            loss = (loss_1 + loss_2)/2
+            
+            if self.use_amp:
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
             else:
-                loss_1, loss_2 = self.model(image, target=target, criterion=self.criterion)
-                loss = (loss_1 + loss_2)/2
-
-                if self.use_amp:
-                    with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                        scaled_loss.backward()
-                else:
-                    loss.backward()
-
-
+                loss.backward()
             self.optimizer.step()
+
             train_loss += loss.item()
             if i % 50 == 0:
                 tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
@@ -329,7 +318,6 @@ def main():
     parser.add_argument('--batch-size', type=int, default=None, metavar='N')
     parser.add_argument('--test-batch-size', type=int, default=None, metavar='N')
     parser.add_argument('--use-balanced-weights', action='store_true', default=False)
-    parser.add_argument('--loss-in-forward', type=bool, default=False)
 
 
     """ optimizer params """
