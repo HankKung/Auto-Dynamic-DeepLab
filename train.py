@@ -70,7 +70,7 @@ class trainNew(object):
 
         elif args.network.startswith('autodeeplab'):
             network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
-            cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype_1.npy')
+            cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
             low_level_layer = 2
 
@@ -206,17 +206,29 @@ class trainNew(object):
                 image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            output_1, output_2 = self.model(image)
-            
-            loss_1 = self.criterion(output_1, target)
-            loss_2 = self.criterion(output_2, target)
-            loss = (loss_1 + loss_2)/2
-            
-            if self.use_amp:
-                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                    scaled_loss.backward()
+            if self.args.loss_in_forward:
+                output_1, output_2 = self.model(image)
+
+                loss_1 = self.criterion(output_1, target)
+                loss_2 = self.criterion(output_2, target)
+                loss = (loss_1 + loss_2)/2
+                
+                if self.use_amp:
+                    with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    loss.backward()
+
             else:
-                loss.backward()
+                loss_1, loss_2 = self.model(image, target=target, criterion=self.criterion)
+                loss = (loss_1 + loss_2)/2
+
+                if self.use_amp:
+                    with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    loss.backward()
+
 
             self.optimizer.step()
             train_loss += loss.item()
@@ -317,6 +329,7 @@ def main():
     parser.add_argument('--batch-size', type=int, default=None, metavar='N')
     parser.add_argument('--test-batch-size', type=int, default=None, metavar='N')
     parser.add_argument('--use-balanced-weights', action='store_true', default=False)
+    parser.add_argument('loss_in_forward', type=bool, default=False)
 
 
     """ optimizer params """

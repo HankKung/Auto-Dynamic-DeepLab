@@ -1,7 +1,6 @@
-CUDA_VISIBLE_DEVICES=0 python ../train.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3 python ../train.py \
  --checkname autodeeplab-baseline \
  --network autodeeplab-baseline \
- --filter_multiplier 20 \
  --dataset cityscapes \
  --batch-size 16 \
  --workers 4 \
@@ -11,4 +10,6 @@ CUDA_VISIBLE_DEVICES=0 python ../train.py \
  --opt_level O1 \
  --lr 0.05 \
  --nesterov \
+ --gpu-ids 0,1,2,3 \
+ --loss_in_forward True \
  --saved-arch-path ../searched_arch

@@ -110,6 +110,7 @@ class Model_1_baseline (nn.Module):
         self.cell_arch = torch.from_numpy(cell_arch)
         self.num_model_1_layers = num_layers
         self._num_classes = num_classes
+        self.low_level_layer = low_level_layer
         self.decoder_1 = Decoder(num_classes, BatchNorm)
 
         FB = F * B
@@ -129,7 +130,7 @@ class Model_1_baseline (nn.Module):
             BatchNorm(128),
         )
 
-        self.low_level_conv = nn.Sequential(nn.Conv2d(FB * 2**self.num_model_1_layers[low_level_layer], 48, 1),
+        self.low_level_conv = nn.Sequential(nn.Conv2d(FB * 2**self.model_1_network[low_level_layer], 48, 1),
                                     BatchNorm(48),
                                     nn.ReLU())
 
@@ -180,11 +181,12 @@ class Model_1_baseline (nn.Module):
         elif self.model_1_network[-1] == 2:
             mult =1
 
-        self.aspp_2 = ASPP_train(FB * fm[self.model_1_network[-1]], \
+        self.aspp_1 = ASPP_train(FB * fm[self.model_1_network[-1]], \
                                       256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
 
-    def forward(self, x):
+    def forward(self, x, target=None, criterion=criterion):
+        size = (x.shape[2], x.shape[3])
         stem = self.stem0(x)
         stem0 = self.stem1(stem)
         stem1 = self.stem2(stem0)
@@ -200,8 +202,14 @@ class Model_1_baseline (nn.Module):
 
         x = two_last_inputs[-1]
         x = self.aspp_1(x)
-        x = self.decoder_1(x)
-        return low_level, two_last_inputs, x
+        x = self.decoder_1(x, low_level_feature, size)
+
+        if target == None:
+            return low_level, two_last_inputs, x
+        else:
+            loss_1 = criterion(x, target)
+            return low_level, two_last_inputs, loss_1 
+            
 
     def _init_weight(self):
         for m in self.modules():
@@ -223,7 +231,7 @@ class Model_2_baseline (nn.Module):
         B_2 = args.B_2
         B_1 = args.B_1
         num_model_1_layers = args.num_model_1_layers
-        self.num_model_2_layers = len(network_arch) - len(num_model_1_layers)
+        self.num_model_2_layers = len(network_arch) - num_model_1_layers
         self.cells = nn.ModuleList()
         self.model_2_network = network_arch[num_model_1_layers:]
         self.cell_arch_2 = torch.from_numpy(cell_arch_2)
@@ -276,34 +284,49 @@ class Model_2_baseline (nn.Module):
 
             self.cells += [_cell]
 
-        if self.num_model_2_layers[-1] == 1:
+        if self.model_2_network[-1] == 1:
             mult = 2
-        elif self.num_model_2_layers[-1] == 2:
+        elif self.model_2_network[-1] == 2:
             mult =1
 
-        self.low_level_conv = nn.Sequential(nn.Conv2d(F_1 * B_1 * 2**self.num_model_1_layers[low_level_layer], 48, 1),
+        self.low_level_conv = nn.Sequential(nn.Conv2d(F_1 * B_1 * 2**model_1_network[low_level_layer], 48, 1),
                                 BatchNorm(48),
                                 nn.ReLU())
-        self.aspp_2 = ASPP_train(F_2 * B_2 * fm[self.num_model_2_layers[-1]], 
+        self.aspp_2 = ASPP_train(F_2 * B_2 * fm[self.model_2_network[-1]], 
                                      256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
 
-    def forward(self, x, evaluation=False):
+    def forward(self, x, target=None, criterion=None, evaluation=False):
         size = (x.shape[2], x.shape[3])
         if not evaluation:
-            low_level, two_last_inputs, y1 = self.model_1(x)
+            if target == None:
+                low_level, two_last_inputs, y1 = self.model_1(x)
 
-            for i in range(self.num_model_2_layers):
-                two_last_inputs = self.cells[i](
-                    two_last_inputs[0], two_last_inputs[1])
-                
-            y2 = two_last_inputs[-1]
+                for i in range(self.num_model_2_layers):
+                    two_last_inputs = self.cells[i](
+                        two_last_inputs[0], two_last_inputs[1])
+                    
+                y2 = two_last_inputs[-1]
 
-            y2 = self.aspp_2(y2)
-            low_level = self.low_level_conv(low_level)
-            y2 = self.decoder_2(y2, low_level, size)     
+                y2 = self.aspp_2(y2)
+                low_level = self.low_level_conv(low_level)
+                y2 = self.decoder_2(y2, low_level, size)     
 
-            return y1, y2
+                return y1, y2
+            else:
+                low_level, two_last_inputs, loss_1 = self.model_1(x, target=target, criterion=criterion)
+
+                for i in range(self.num_model_2_layers):
+                    two_last_inputs = self.cells[i](
+                        two_last_inputs[0], two_last_inputs[1])
+                    
+                y2 = two_last_inputs[-1]
+
+                y2 = self.aspp_2(y2)
+                low_level = self.low_level_conv(low_level)
+                y2 = self.decoder_2(y2, low_level, size)     
+                loss_2 = criterion(y2, target)
+                return loss_1, loss_2
 
         else:
             torch.cuda.synchronize()
