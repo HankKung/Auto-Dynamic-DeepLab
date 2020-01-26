@@ -1,0 +1,14 @@
+CUDA_VISIBLE_DEVICES=0,1 python ../train.py \
+ --checkname searched_baseline \
+ --network searched_baseline \
+ --dataset cityscapes \
+ --batch-size 16 \
+ --workers 8 \
+ --epoch 2150 \
+ --use-balanced-weights \
+ --use-amp True \
+ --opt-level O1 \
+ --lr 0.05 \
+ --nesterov \
+ --gpu-ids 0,1 \
+ --saved-arch-path ../searched_arch

@@ -185,7 +185,7 @@ class Model_1_baseline (nn.Module):
                                       256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
 
-    def forward(self, x, target=None, criterion=criterion):
+    def forward(self, x, target=None, criterion=None):
         size = (x.shape[2], x.shape[3])
         stem = self.stem0(x)
         stem0 = self.stem1(stem)
@@ -209,7 +209,7 @@ class Model_1_baseline (nn.Module):
         else:
             loss_1 = criterion(x, target)
             return low_level, two_last_inputs, loss_1 
-            
+
 
     def _init_weight(self):
         for m in self.modules():

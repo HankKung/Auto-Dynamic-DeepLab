@@ -6,7 +6,7 @@ CUDA_VISIBLE_DEVICES=0 python ../train.py \
 --workers 16 \
 --dataset cityscapes \
 --use-amp True \
---opt_level O1 \
+--opt-level O1 \
 --use-balanced-weights \
 --epoch 2150 \
 --lr 0.05 \

@@ -7,9 +7,9 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python ../train.py \
  --epoch 2150 \
  --use-balanced-weights \
  --use-amp True \
- --opt_level O1 \
+ --opt-level O1 \
  --lr 0.05 \
  --nesterov \
  --gpu-ids 0,1,2,3 \
- --loss_in_forward True \
+ --loss-in-forward True \
  --saved-arch-path ../searched_arch

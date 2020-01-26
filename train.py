@@ -320,7 +320,7 @@ def main():
 
     """ training config """
     parser.add_argument('--use-amp', type=bool, default=False)
-    parser.add_argument('--opt_level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
+    parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
     parser.add_argument('--sync-bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
     parser.add_argument('--freeze-bn', type=bool, default=False, help='whether to freeze bn parameters (default: False)')
     parser.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'focal'])
@@ -329,7 +329,7 @@ def main():
     parser.add_argument('--batch-size', type=int, default=None, metavar='N')
     parser.add_argument('--test-batch-size', type=int, default=None, metavar='N')
     parser.add_argument('--use-balanced-weights', action='store_true', default=False)
-    parser.add_argument('loss_in_forward', type=bool, default=False)
+    parser.add_argument('--loss-in-forward', type=bool, default=False)
 
 
     """ optimizer params """
@@ -369,7 +369,7 @@ def main():
         except ValueError:
             raise ValueError('Argument --gpu_ids must be a comma-separated list of integers only')
 
-    if args.cuda and len(args.gpu_ids) > 1:
+    if args.cuda and len(args.gpu_ids) > 1 and args.network != 'autodeeplab-baseline':
         args.sync_bn = True
     else:
         args.sync_bn = False
