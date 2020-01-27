@@ -45,11 +45,14 @@ class Saver(object):
         logfile = os.path.join(self.experiment_dir, 'parameters.txt')
         log_file = open(logfile, 'w')
         p = OrderedDict()
+        p['network'] = self.args.network
+        p['lr-aspp'] = self.args.lr_aspp
         p['datset'] = self.args.dataset
         p['lr'] = self.args.lr
         p['lr_scheduler'] = self.args.lr_scheduler
         p['loss_type'] = self.args.loss_type
         p['epoch'] = self.args.epochs
+
 
         for key, val in p.items():
             log_file.write(key + ':' + str(val) + '\n')

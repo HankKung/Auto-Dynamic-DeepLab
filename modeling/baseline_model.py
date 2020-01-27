@@ -295,7 +295,7 @@ class Model_2_baseline (nn.Module):
         self._init_weight()
 
 
-    def forward(self, x evaluation=False):
+    def forward(self, x, evaluation=False):
         size = (x.shape[2], x.shape[3])
         if not evaluation:
             low_level, two_last_inputs, y1 = self.model_1(x)

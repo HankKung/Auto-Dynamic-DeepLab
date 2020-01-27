@@ -145,14 +145,6 @@ class trainNew(object):
                 keep_batchnorm_fp32=keep_batchnorm_fp32, loss_scale="dynamic")
 
 
-        """ Using cuda """
-        # if args.cuda:
-        #     if args.sync_bn:
-        #         self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
-        #         patch_replication_callback(self.model)
-        #     self.model = self.model.cuda()
-
-
         if args.cuda and len(self.args.gpu_ids) >1:
             if self.opt_level == 'O2' or self.opt_level == 'O3':
                 print('currently cannot run with nn.DataParallel and optimization level', self.opt_level)
@@ -376,7 +368,7 @@ def main():
     print('Total Epoches:', new_trainer.args.epochs)
     for epoch in range(new_trainer.args.start_epoch, new_trainer.args.epochs):
         new_trainer.training(epoch)
-        if epoch==0 or epoch % args.eval_interval == (args.eval_interval - 1) or epoch > new_trainer.args.epochs - 50:
+        if epoch == 0 or epoch % args.eval_interval == (args.eval_interval - 1) or epoch > new_trainer.args.epochs - 50:
             new_trainer.validation(epoch)
     new_trainer.writer.close()
 

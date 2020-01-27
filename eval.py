@@ -1,18 +1,27 @@
 import argparse
 import os
 import numpy as np
-from tqdm import tqdm
+
 from mypath import Path
 from dataloaders import make_data_loader
+
 from utils.loss import SegmentationLosses
 from utils.calculate_weights import calculate_weigths_labels
+from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
-from utils.eval_utils import AverageMeter
+
+from modeling.baseline_model import *
 from modeling.dense_model import *
+from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
+from modeling.sync_batchnorm.replicate import patch_replication_callback
+
+from tqdm import tqdm
 from torchviz import make_dot, make_dot_from_trace
+from apex import amp
 import time
+
 
 class Evaluation(object):
     def __init__(self, args):
@@ -28,42 +37,57 @@ class Evaluation(object):
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
         _, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
-        cell_path_1 = os.path.join(args.saved_arch_path, 'genotype_1.npy')
-        cell_path_2 = os.path.join(args.saved_arch_path, 'genotype_2.npy')
-        network_path_space = os.path.join(args.saved_arch_path, 'network_path_space.npy')
+        if args.network == 'searched_dense':
+            """ 40_5e_lr_38_31.91  """
+            cell_path_1 = os.path.join(args.saved_arch_path, '40_5e_38_lr', 'genotype_1.npy')
+            cell_path_2 = os.path.join(args.saved_arch_path, '40_5e_38_lr','genotype_2.npy')
+            cell_arch_1 = np.load(cell_path_1)
+            cell_arch_2 = np.load(cell_path_2)
+            network_arch = [1, 2, 3, 2, 3, 2, 2, 1, 2, 1, 1, 2]
+            low_level_layer = 0
 
-        new_cell_arch_1 = np.load(cell_path_1)
-        new_cell_arch_2 = np.load(cell_path_2)
- 
-        new_network_arch = np.load(network_path_space)
-        
-        if args.network == 'searched_arch':
-            new_network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
+            model = Model_2(network_arch,
+                            cell_arch_1,
+                            cell_arch_2,
+                            self.nclass,
+                            args,
+                            low_level_layer)
 
-        elif args.network == 'autodeeplab':
-            new_network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
-            cell = np.zeros((10, 2))
-            cell[0] = [0, 7]
-            cell[1] = [1, 4]
-            cell[2] = [2, 4]
-            cell[3] = [3, 6]
-            cell[4] = [5, 4]
-            cell[5] = [8, 4]
-            cell[6] = [11, 5]
-            cell[7] = [13, 5]
-            cell[8] = [19, 7]
-            cell[9] = [18, 5]
-            cell=np.int_(cell)
-            new_cell_arch_1 = cell
-            new_cell_arch_2 = cell      
+        elif args.network == 'searched_baseline':
+            cell_path_1 = os.path.join(args.saved_arch_path, 'searched_baseline', 'genotype_1.npy')
+            cell_path_2 = os.path.join(args.saved_arch_path, 'searched_baseline','genotype_2.npy')
+            cell_arch_1 = np.load(cell_path_1)
+            cell_arch_2 = np.load(cell_path_2)
+            network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
+            low_level_layer = 1
+            model = Model_2_baseline(network_arch,
+                                        cell_arch_1,
+                                        cell_arch_2,
+                                        self.nclass,
+                                        args,
+                                        low_level_layer)
 
-        # Define network
-        model = Model_2(network_arch= new_network_arch,
-                         cell_arch_d = new_cell_arch_1,
-                         cell_arch_c = new_cell_arch_2,
-                         num_classes=self.nclass,
-                         device_num_layers=6,
-                         sync_bn=args.sync_bn)
+        elif args.network.startswith('autodeeplab'):
+            network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
+            cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
+            cell_arch = np.load(cell_path)
+            low_level_layer = 2
+
+            if args.network == 'autodeeplab-dense':
+                model = Model_2(network_arch,
+                                        cell_arch,
+                                        cell_arch,
+                                        self.nclass,
+                                        args,
+                                        low_level_layer)
+
+            elif args.network == 'autodeeplab-baseline':
+                model = Model_2_baseline(network_arch,
+                                        cell_arch,
+                                        cell_arch,
+                                        self.nclass,
+                                        args,
+                                        low_level_layer)
 
         if args.use_balanced_weights:
             classes_weights_path = os.path.join(Path.db_root_dir(args.dataset), args.dataset + '_classes_weights.npy')
@@ -137,37 +161,40 @@ class Evaluation(object):
 
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
-            loss = (loss_1 + loss_2) /2
-            test_loss += loss.item()
 
-            tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
-
+            """ *******************************************************************************"""
             torch.cuda.synchronize()
             tic = time.perf_counter()
+            """ *******************************************************************************"""
 
-            pred_1 = output_1.data.cpu().numpy()
-            pred_1 = np.argmax(pred_1, axis=1)
+            pred_1 = torch.argmax(pred_1, axis=1)
 
+            """ *******************************************************************************"""
             torch.cuda.synchronize()
             pred_1_meter.update(tic - time.perf_counter())
-
+            """ *******************************************************************************"""
             torch.cuda.synchronize()
             tic = time.perf_counter()
+            """ *******************************************************************************"""
 
-            pred_2 = cloud_output.data.cpu().numpy()
-            pred_2 = np.argmax(pred_2, axis=1)
+            pred_2 = torch.argmax(pred_2, axis=1)
+
+            """ *******************************************************************************"""
             torch.cuda.synchronize()
             pred_2_meter.update(tic - time.perf_counter())
+            """ *******************************************************************************"""
 
             target_show = target
-            target = target.cpu().numpy()
 
             # Add batch sample into evaluator
             self.evaluator_1.add_batch(target, pred_1)
             self.evaluator_2.add_batch(target, pred_2)
+
             self.summary.visualize_image(self.writer, self.args.dataset, image, target_show, output_1, i)
-            time_meter_1.update(time_1)
-            time_meter_2.update(time_2)
+
+            if i < 9:
+                time_meter_1.update(time_1)
+                time_meter_2.update(time_2)
 
         mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
         mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
@@ -177,16 +204,15 @@ class Evaluation(object):
 
         print('Validation:')
         print("device_mIoU:{}, cloud_mIoU: {}".format(mIoU_1, mIoU_2))
-        print('Loss: %.3f' % test_loss)
         print("device_inference_time:{}, cloud_inference_time: {}".format(time_meter_1.average(), time_meter_2.average()))
         print("device_pred_time:{}, cloud_pred_time: {}".format(pred_1_meter.average(), pred_2_meter.average()))
 
 def main():
     
     """ model setting """
-    parser.add_argument('--network', type=str, default='searched_dense',
-                        choices=['searched_dense', 'searched_baseline', 'autodeeplab'])
+    parser.add_argument('--network', type=str, default='searched_dense', choices=['searched_dense', 'searched_baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
+    parser.add_argument('--lr-aspp', type=bool, default=None)
     parser.add_argument('--F_2', type=int, default=20)
     parser.add_argument('--F_1', type=int, default=20)
     parser.add_argument('--B_2', type=int, default=5)
@@ -202,6 +228,8 @@ def main():
 
 
     """ training config """
+    parser.add_argument('--use-amp', type=bool, default=False)
+    parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
     parser.add_argument('--sync-bn', type=bool, default=None,
                         help='whether to use sync bn (default: auto)')
     parser.add_argument('--freeze-bn', type=bool, default=False,
