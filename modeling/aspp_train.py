@@ -14,6 +14,7 @@ class ASPP_train(nn.Module):
 
         self.global_pooling = nn.AdaptiveAvgPool2d(1)
         self.relu = nn.ReLU(inplace=True)
+        self.relu_non_inplace = nn.ReLU()
         self.aspp1 = conv(C, depth, kernel_size=1, stride=1, bias=False)
         self.aspp2 = conv(C, depth, kernel_size=3, stride=1,
                                dilation=int(6*mult), padding=int(6*mult),
@@ -36,6 +37,7 @@ class ASPP_train(nn.Module):
         self._init_weight()
 
     def forward(self, x):
+        x = self.relu_non_inplace(x)
         x1 = self.aspp1(x)
         x1 = self.aspp1_bn(x1)
         x1 = self.relu(x1)

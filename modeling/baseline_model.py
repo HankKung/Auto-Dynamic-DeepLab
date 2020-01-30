@@ -119,6 +119,8 @@ class Model_1_baseline (nn.Module):
         self.stem0 = nn.Sequential(
             nn.Conv2d(3, 64, 3, stride=2, padding=1),
             BatchNorm(64),
+            nn.ReLU()
+
         )
         self.stem1 = nn.Sequential(
             nn.Conv2d(64, 64, 3, padding=1),
@@ -126,13 +128,16 @@ class Model_1_baseline (nn.Module):
         )
 
         self.stem2 = nn.Sequential(
+            nn.ReLU(),
             nn.Conv2d(64, 128, 3, stride=2, padding=1),
             BatchNorm(128),
         )
 
-        self.low_level_conv = nn.Sequential(nn.Conv2d(FB * 2**self.model_1_network[low_level_layer], 48, 1),
-                                    BatchNorm(48),
-                                    nn.ReLU())
+        self.low_level_conv = nn.Sequential(
+                                    nn.ReLU(),
+                                    nn.Conv2d(FB * 2**self.model_1_network[low_level_layer], 48, 1),
+                                    BatchNorm(48)
+                                    )
 
         for i in range(self.num_model_1_layers):
 
@@ -287,9 +292,12 @@ class Model_2_baseline (nn.Module):
         elif self.model_2_network[-1] == 2:
             mult =1
 
-        self.low_level_conv = nn.Sequential(nn.Conv2d(F_1 * B_1 * 2**model_1_network[low_level_layer], 48, 1),
-                                BatchNorm(48),
-                                nn.ReLU())
+        self.low_level_conv = nn.Sequential(
+                                nn.ReLU(),
+                                nn.Conv2d(F_1 * B_1 * 2**model_1_network[low_level_layer], 48, 1),
+                                BatchNorm(48)
+                                )
+        
         self.aspp_2 = ASPP_train(F_2 * B_2 * fm[self.model_2_network[-1]], 
                                      256, num_classes, BatchNorm, mult=mult)
         self._init_weight()

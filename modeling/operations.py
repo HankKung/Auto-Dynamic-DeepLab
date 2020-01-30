@@ -187,6 +187,7 @@ class ASPP(nn.Module):
     def __init__(self, in_channels, out_channels, paddings, dilations, BatchNorm=nn.BatchNorm2d, momentum=0.0003):
 
         super(ASPP, self).__init__()
+        self.relu = nn.ReLU(),
         self.conv11 = nn.Sequential(nn.Conv2d(in_channels, in_channels, 1, bias=False, ),
                                     BatchNorm(in_channels),
                                     nn.ReLU(inplace=True))
@@ -205,6 +206,7 @@ class ASPP(nn.Module):
         self._init_weight()
         
     def forward(self, x):
+        x = self.relu(x)
         conv11 = self.conv11(x)
         conv33 = self.conv33(x)
 

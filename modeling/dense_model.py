@@ -144,6 +144,7 @@ class Model_1 (nn.Module):
         self.stem0 = nn.Sequential(
             nn.Conv2d(3, 64, 3, stride=2, padding=1),
             BatchNorm(64),
+            nn.ReLU()
         )
 
         self.stem1 = nn.Sequential(
@@ -152,8 +153,9 @@ class Model_1 (nn.Module):
         )
 
         self.stem2 = nn.Sequential(
+            nn.ReLU(),
             nn.Conv2d(64, 128, 3, stride=2, padding=1),
-            BatchNorm(128),
+            BatchNorm(128)
         )
 
 
@@ -219,9 +221,10 @@ class Model_1 (nn.Module):
             self.aspp_1 = ASPP_train(FB * fm[self.model_1_network[-1]], \
                                       256, num_classes, BatchNorm, mult=mult)
             self.low_level_conv = nn.Sequential(
+                                    nn.ReLU(),
                                     nn.Conv2d(FB * 2** self.model_1_network[low_level_layer], 48, 1),
                                     BatchNorm(48),
-                                    nn.ReLU())
+                                    )
             self.decoder_1 = Decoder(num_classes, BatchNorm)
 
         self._init_weight()
@@ -371,9 +374,10 @@ class Model_2 (nn.Module):
             mult =1
 
         self.low_level_conv = nn.Sequential(
+                                    nn.ReLU()
                                     nn.Conv2d(F_1 * B_1 * 2**model_1_network[low_level_layer], 48, 1),
                                     BatchNorm(48),
-                                    nn.ReLU())
+                                    )
         self.aspp_2 = ASPP_train(F_2 * B_2 * fm[self.model_2_network[-1]], 
                                      256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
