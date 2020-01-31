@@ -3,6 +3,7 @@ import torch.nn as nn
 from modeling.operations import *
 from modeling.genotypes import PRIMITIVES
 from modeling.genotypes import Genotype
+import numpy as np
 
 x = torch.cuda.FloatTensor(10000, 500).normal_()
 w = torch.cuda.FloatTensor(200, 500).normal_()
@@ -21,23 +22,21 @@ class measure(nn.Module):
         stride=1
         self.ops=nn.ModuleList()
         for primitive in PRIMITIVES:
-            #if 'dil' in primitive:
             op = OPS[primitive](self.C, stride, False)
             if 'pool' in primitive:
                 op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))
             self.ops.append(op)
-            #if 'conv' in primitive:
-            #    self.ops.append(OPS[primitive](self.C*2, stride, False))
-            #    self.ops.append(OPS[primitive](self.C*4, stride, False))
-            #    self.ops.append(OPS[primitive](self.C*8, stride, False))
+
         self.x1 = torch.cuda.FloatTensor(10000, 500).normal_()
         self.w1 = torch.cuda.FloatTensor(200, 500).normal_()
         torch.cuda.synchronize()
         torch.cuda.synchronize()
-    def forward(self, x):
-         for op in self.ops:
+
+
+    def forward(self, x, lat_dict):
+         for op_i, op in enumerate(self.ops):
              y = self.x1.mm(self.w1.t())
-             torch.cuda.synchronize() # wait for mm to finish
+             torch.cuda.synchronize()
              time=0
              for i in range(10000):
                  start = torch.cuda.Event(enable_timing=True)
@@ -53,8 +52,11 @@ class measure(nn.Module):
                      torch.cuda.synchronize()
                      time+=start.elapsed_time(end)
              print(time/5000)
+             lat_dict[i][x.shape[1]] = time/5000
+
              print(op)
              torch.cuda.synchronize()
+        return lat_dict
 
 def scale_dimension(dim, scale):
     return int((float(dim) - 1.0) * scale + 1.0)
@@ -82,29 +84,40 @@ w4 = scale_dimension(w, 0.03125)
 x4 = torch.cuda.FloatTensor(1, 160, h4, w4).normal_()
 x4=x4.cuda()
 
+
+lat_dict = dict()
+for i in range(8):
+    lat_dict[i] = dict()
+
+
 model1 = measure(20)
 model1 = model1.cuda()
 model1.eval()
 with torch.no_grad():
-    model1(x)
+    lat_dict = model1(x, lat_dict)
 print('************************')
+np.save('latency.npy', lat_dict) 
+latency = np.load('latency.npy', allow_pickle='TRUE').item()
+print(latency)
 
 model2 = measure(40)
 model2 = model2.cuda()
 model2.eval()
 with torch.no_grad():
-    model1(x2)
+    lat_dict = model2(x2, lat_dict)
 print('************************')
 
 model3 = measure(80)
 model3 = model3.cuda()
 model3.eval()
 with torch.no_grad():
-    model2(x3)
+    lat_dict = model3(x3, lat_dict)
 print('************************')
 
 model4 = measure(160)
 model4 = model4.cuda()
 model4.eval()
 with torch.no_grad():
-    model3(x4)
+    lat_dict = model4(x4, lat_dict)
+np.save('latency.npy', lat_dict) 
+
