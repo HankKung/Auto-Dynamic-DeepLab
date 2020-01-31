@@ -1,11 +1,13 @@
 CUDA_VISIBLE_DEVICES=0 python ../search.py \
 --checkname search \
---batch-size 2 \
+--batch-size 8 \
 --workers 8 \
 --dataset cityscapes \
---alpha_epoch 20 \
---epoch 40 \
---lr 0.025 \
+--use-amp True \
+--opt-level O2 \
+--alpha_epoch 40 \
+--epoch 75 \
+--lr 0.03 \
 --min_lr 0.001 \
---arch-lr 0.003 \
+--arch-lr 0.004 \
 --weight-decay 5e-4 
