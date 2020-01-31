@@ -2,15 +2,19 @@ import argparse
 import os
 import numpy as np
 from tqdm import tqdm
+from torchviz import make_dot, make_dot_from_trace
+
 from mypath import Path
 from dataloaders import make_data_loader
+
 from utils.loss import SegmentationLosses
 from utils.calculate_weights import calculate_weigths_labels
 from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
-from torchviz import make_dot, make_dot_from_trace
+from utils.copy_state_dict import copy_state_dict
+
 from modeling.baseline_model import *
 from modeling.dense_model import *
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
@@ -169,13 +173,13 @@ class trainNew(object):
                 for k, v in state_dict.items():
                     name = k[7:]  # remove 'module.' of dataparallel
                     new_state_dict[name] = v
-                self.model.load_state_dict(new_state_dict)
+                copy_state_dict(self.model.state_dict(), new_state_dict)
 
             else:
                 if (torch.cuda.device_count() > 1 or args.load_parallel):
-                    self.model.module.load_state_dict(checkpoint['state_dict'])
+                    copy_state_dict(self.model.module.state_dict(), checkpoint['state_dict'])
                 else:
-                    self.model.load_state_dict(checkpoint['state_dict'])
+                    copy_state_dict(self.model.state_dict(), checkpoint['state_dict'])
 
             if not args.ft:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])

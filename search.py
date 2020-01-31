@@ -7,15 +7,20 @@ import torch
 from collections import OrderedDict
 from mypath import Path
 from dataloaders import make_data_loader
-from modeling.sync_batchnorm.replicate import patch_replication_callback
+
 from utils.loss import SegmentationLosses
 from utils.calculate_weights import calculate_weigths_labels
 from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
+from utils.copy_state_dict import copy_state_dict
+from utils.eval_utils import *
+
+from modeling.sync_batchnorm.replicate import patch_replication_callback
 from modeling.model_search import Model_search
 from decoding.decoding_formulas import Decoder
+
 import apex
 
 
@@ -63,7 +68,7 @@ class Trainer(object):
         self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
 
         """ Define network """
-        model = Model_search (num_classes=self.nclass, num_layers=12, F=self.args.filter_multiplier,
+        model = Model_search (num_classes=self.nclass, num_layers=12, F=self.args.F,
                              B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
@@ -139,13 +144,14 @@ class Trainer(object):
                 for k, v in state_dict.items():
                     name = k[7:]  # remove 'module.' of dataparallel
                     new_state_dict[name] = v
-                self.model.load_state_dict(new_state_dict)
+                copy_state_dict(self.model.state_dict(), new_state_dict)
 
             else:
                 if (torch.cuda.device_count() > 1 or args.load_parallel):
-                    self.model.module.load_state_dict(checkpoint['state_dict'])
+                    copy_state_dict(self.model.module.state_dict(), checkpoint['state_dict'])
                 else:
-                    self.model.load_state_dict(checkpoint['state_dict'])
+                    copy_state_dict(self.model.state_dict(), checkpoint['state_dict'])
+
 
     def training(self, epoch):
         train_loss = 0.0
@@ -192,6 +198,10 @@ class Trainer(object):
                 else:
                     arch_loss.backward()
                 self.architect_optimizer.step()
+
+                if epoch >= self.args.epochs-5:
+                    if i !=0 and i % 20 == 0:
+                        self.decoder_save(epoch, (i//20) -1)
 
             train_loss += loss.item()
             tbar.set_description('Train loss: %.3f-------Search loss: %.3f' % (train_loss / (i + 1), search_loss / (i+1)))
@@ -255,6 +265,10 @@ class Trainer(object):
             }, is_best)
 
         """ decode the arch """
+        self.decoder_save(epoch)
+
+
+    def decoder_save(self, epoch, num='val'):
         decoder = Decoder(self.model.alphas_1,
                           self.model.alphas_2,
                           self.model.betas,
@@ -262,9 +276,10 @@ class Trainer(object):
                           self.args.B_2)
         result_paths, result_paths_space = decoder.viterbi_decode()
         genotype_1, genotype_2 = decoder.genotype_decode()
-
+        if type(num) == int:
+            num = str(num)
         try:
-            dir_name = os.path.join(self.saver.experiment_dir, str(epoch))
+            dir_name = os.path.join(self.saver.experiment_dir, str(epoch), num)
             os.mkdir(dir_name)
         except:
             print('folder path error')
@@ -272,104 +287,128 @@ class Trainer(object):
         network_path_filename = os.path.join(dir_name,'network_path')
         genotype_filename_1 = os.path.join(dir_name, 'genotype_1')
         genotype_filename_2 = os.path.join(dir_name, 'genotype_2')
-        mIoU_saved_file_name = os.path.join(dir_name, 'miou')
+        beta_filename = os.path.join(dir_name, 'betas')
+
         np.save(network_path_filename, result_paths)
         np.save(genotype_filename_1, genotype_1)
         np.save(genotype_filename_2, genotype_2)
-        np.save(new_pred, mIoU_saved_file_name)
+        np.save(beta_filename, self.model.betas.numpy())
+
+
+    def pareto_eval(self):
+        ex_dir_name = self.saver.experiment_dir
+        pareto_optimal = []
+        for epoch in range(self.args.epoch-5, self.args.epoch):
+            for num in range(10):
+                if num == 9:
+                    dir_name = os.path.join(ex_dir_name, str(epoch), "val")
+                else:
+                    dir_name = os.path.join(ex_dir_name, str(epoch), str(i))
+
+                self.model.eval()
+                self.evaluator_1.reset()
+                self.evaluator_2.reset()
+                tbar = tqdm(self.val_loader, desc='\r')
+
+                alphas_1 = np.load(os.path.join(dir_name,'genotype_1'))
+                alphas_2 = np.load(os.path.join(dir_name,'genotype_2'))
+                betas = np.load(os.path.join(dir_name,'betas'))
+
+                alphas_1 = encoding_alphas(alphas_1)
+                alphas_2 = encoding_alphas(alphas_2)
+                betas = encoding_betas(betas)
+
+                for i, sample in enumerate(tbar):
+                    image, target = sample['image'], sample['label']
+                    if self.args.cuda:
+                        image, target = image.cuda(), target.cuda()
+                    with torch.no_grad():
+                        output_1, output_2, lat = self.model(image, train=False, alphas_1=alphas_1, alphas_2=alphas_2, betas=betas)
+
+                    output_1 = torch.argmax(output_1, axis=1)
+                    output_2 = torch.argmax(output_2, axis=1)
+
+                    """ Add batch sample into evaluator"""
+                    self.evaluator_1.add_batch(target, output_1)
+                    self.evaluator_2.add_batch(target, output_2)
+
+                mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
+                mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
+                mIoU_mean = (mIoU_1 + mIoU_2)/2
+                lat = lat.item()
+                optimal = True
+                for candidate in pareto_optimal:
+                    if candidate[0]: 
+                        if mIoU_mean > candidate[1] and lat < candidate[2]:
+                            candidate[0] = False
+                        elif mIoU_mean < candidate[1] and lat > candidate[2]:
+                            optimal = False
+                result = [optimal, mIoU_mean, lat, dir_name]
+                pareto_optimal.append(result)
+                print(str(result[0]) + '\t' + str(result[1]) + '\t' + str(result[2]) + '\t' + result[3])
+
+        with open(os.path.join(self.ex_dir_name, 'pareto_optimal.txt'), 'w') as f:
+            for candidate in pareto_optimal:
+                f.write(str(candidate[0]) + '\t' + str(candidate[1]) + '\t' + str(candidate[2]) + '\t' + candidate[3])
         
 
 def main():
     parser = argparse.ArgumentParser(description="The Search")
 
     """ Search Network """
-    parser.add_argument('--network', type=str, default='supernet',
-                        choices=['searched_dense', 'searched_baseline', 'autodeeplab', 'supernet'])
-    parser.add_argument('--opt_level', type=str, default='O0',
-                        choices=['O0', 'O1', 'O2', 'O3'],
-                        help='opt level for half percision training (default: O0)')
-    parser.add_argument('--dataset', type=str, default='kd',
-                        choices=['pascal', 'coco', 'cityscapes', 'kd'],
-                        help='dataset name (default: pascal)')
-    parser.add_argument('--filter_multiplier', type=int, default=8)
+    parser.add_argument('--network', type=str, default='supernet', choices=['searched_dense', 'searched_baseline', 'autodeeplab', 'supernet'])
+    parser.add_argument('--F', type=int, default=8)
     parser.add_argument('--B_2', type=int, default=5)
     parser.add_argument('--B_1', type=int, default=5)
 
 
     """ Training Setting """
-    parser.add_argument('--start_epoch', type=int, default=0,
-                        metavar='N', help='start epochs (default:0)')
-    parser.add_argument('--epochs', type=int, default=40, metavar='N',
-                        help='number of epochs to train (default: auto)')
-    parser.add_argument('--alpha_epoch', type=int, default=20,
-                        metavar='N', help='epoch to start training alphas')
-    parser.add_argument('--sync-bn', type=bool, default=None,
-                        help='whether to use sync bn (default: auto)')
-    parser.add_argument('--loss-type', type=str, default='ce',
-                        choices=['ce', 'focal'],
-                        help='loss func type (default: ce)')
+    parser.add_argument('--start_epoch', type=int, default=0, metavar='N', help='start epochs (default:0)')
+    parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: auto)')
+    parser.add_argument('--alpha_epoch', type=int, default=20, metavar='N', help='epoch to start training alphas')
+    parser.add_argument('--sync-bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
+    parser.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'focal'], help='loss func type (default: ce)')
     parser.add_argument('--clean-module', type=int, default=0)
 
 
     """ Dataset Setting """
-    parser.add_argument('--use-sbd', action='store_true', default=False,
-                        help='whether to use SBD dataset (default: True)')
+    parser.add_argument('--dataset', type=str, default='cityscapes', choices=['pascal', 'coco', 'cityscapes', 'kd'])
+    parser.add_argument('--use-sbd', action='store_true', default=False, help='whether to use SBD dataset (default: True)')
     parser.add_argument('--load-parallel', type=int, default=0)
-    parser.add_argument('--workers', type=int, default=0,
-                        metavar='N', help='dataloader threads')
-    parser.add_argument('--batch-size', type=int, default=2,
-                        metavar='N', help='input batch size for \
-                                training (default: auto)')
-    parser.add_argument('--test-batch-size', type=int, default=1,
-                        metavar='N', help='input batch size for \
-                                testing (default: auto)')
-    parser.add_argument('--use_balanced_weights', action='store_true', default=False,
-                        help='whether to use balanced weights (default: False)')
+    parser.add_argument('--workers', type=int, default=2, metavar='N', help='dataloader threads')
+    parser.add_argument('--batch-size', type=int, default=2, metavar='N')
+    parser.add_argument('--test-batch-size', type=int, default=1, metavar='N')
+    parser.add_argument('--use_balanced_weights', action='store_true', default=False, help='whether to use balanced weights (default: False)')
 
 
     """ optimizer params """
-    parser.add_argument('--lr', type=float, default=0.025, metavar='LR',
-                        help='learning rate (default: auto)')
+    parser.add_argument('--lr', type=float, default=0.025, metavar='LR')
     parser.add_argument('--min_lr', type=float, default=0.001)
-    parser.add_argument('--arch-lr', type=float, default=3e-3, metavar='LR',
-                        help='learning rate for alpha and beta in architect searching process')
-    parser.add_argument('--lr-scheduler', type=str, default='cos',
-                        choices=['poly', 'step', 'cos'],
-                        help='lr scheduler mode')
-    parser.add_argument('--momentum', type=float, default=0.9,
-                        metavar='M', help='momentum (default: 0.9)')
-    parser.add_argument('--weight-decay', type=float, default=3e-4,
-                        metavar='M', help='w-decay (default: 5e-4)')
-    parser.add_argument('--arch-weight-decay', type=float, default=1e-3,
-                        metavar='M', help='w-decay (default: 5e-4)')
-    parser.add_argument('--nesterov', action='store_true', default=False,
-                        help='whether use nesterov (default: False)')
+    parser.add_argument('--arch-lr', type=float, default=3e-3, metavar='LR', help='learning rate for alpha and beta in architect searching process')
+    parser.add_argument('--lr-scheduler', type=str, default='cos',choices=['poly', 'step', 'cos'])
+    parser.add_argument('--momentum', type=float, default=0.9, metavar='M', help='momentum (default: 0.9)')
+    parser.add_argument('--weight-decay', type=float, default=5e-4, metavar='M', help='w-decay (default: 5e-4)')
+    parser.add_argument('--arch-weight-decay', type=float, default=1e-3, metavar='M', help='w-decay (default: 5e-4)')
+    parser.add_argument('--nesterov', action='store_true', default=False, help='whether use nesterov (default: False)')
+    parser.add_argument('--use_amp', action='store_true', default=False) 
+    parser.add_argument('--opt_level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
 
 
     """ cuda, seed and logging """
-    parser.add_argument('--no-cuda', action='store_true', default=
-                        False, help='disables CUDA training')
-    parser.add_argument('--use_amp', action='store_true', default=
-                        False)  
-    parser.add_argument('--gpu-ids', type=str, default='0',
-                        help='use which gpu to train, must be a \
-                        comma-separated list of integers only (default=0)')
-    parser.add_argument('--seed', type=int, default=1, metavar='S',
-                        help='random seed (default: 1)')
+    parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA training') 
+    parser.add_argument('--gpu-ids', type=str, default='0', help='use which gpu to train, must be a comma-separated list of integers only (default=0)')
+    parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed (default: 1)')
 
 
     """ checking point """
-    parser.add_argument('--resume', type=str, default=None,
-                        help='put the path to resuming file if needed')
-    parser.add_argument('--checkname', type=str, default=None,
-                        help='set the checkpoint name')
+    parser.add_argument('--resume', type=str, default=None, help='put the path to resuming file if needed')
+    parser.add_argument('--checkname', type=str, default=None, help='set the checkpoint name')
 
 
     """ evaluation option """
-    parser.add_argument('--eval-interval', type=int, default=1,
-                        help='evaluuation interval (default: 1)')
-    parser.add_argument('--no-val', action='store_true', default=False,
-                        help='skip validation during training')
+    parser.add_argument('--eval-interval', type=int, default=1, help='evaluuation interval (default: 1)')
+    parser.add_argument('--no-val', action='store_true', default=False, help='skip validation during training')
+
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -397,10 +436,11 @@ def main():
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
-        if epoch >  trainer.args.epochs - 10 and not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
+        if epoch >= trainer.args.epochs - 5 and not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
 
     trainer.writer.close()
+    trainer.pareto_eval()
 
 if __name__ == "__main__":
    main()
