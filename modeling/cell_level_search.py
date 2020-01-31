@@ -14,14 +14,26 @@ class MixedOp (nn.Module):
         eps=1e-5
         momentum=0.1
         self._ops = nn.ModuleList()
+        # self._ops_latency=[]
+
         for primitive in PRIMITIVES:
             op = OPS[primitive](C, stride, BatchNorm, eps, momentum, False)
+            # lat = OPS_lat[primitive][C]
             if 'pool' in primitive:
                 op = nn.Sequential(op, BatchNorm(C, eps=eps, momentum=momentum, affine=False))
             self._ops.append(op)
+            # self._ops_latency.append(latency)
 
-    def forward(self, x, weights):
-        return sum(w * op(x) for w, op in zip(weights, self._ops))
+    def forward(self, x, weights, train=True):
+        if train:
+            return sum(w * op(x) for w, op in zip(weights, self._ops))
+        else:
+            w = torch.argmax(weights)
+            return  self._ops[w](x)
+
+    def latency(self, weights):
+        return sum(w *la for w, la in zip(weights, self._ops_latency))
+
 
 
 class Cell(nn.Module):
@@ -87,35 +99,87 @@ class Cell(nn.Module):
         return F.interpolate(prev_feature, (feature_size_h, feature_size_w), mode='bilinear')
 
 
-    def forward(self, s0, s1_down, s1_same, s1_up, n_alphas):
-        if s1_down is not None:
-            s1_down = self.preprocess_down(s1_down)
-            size_h, size_w = s1_down.shape[2], s1_down.shape[3]
-        if s1_same is not None:
-            s1_same = self.preprocess_same(s1_same)
-            size_h, size_w = s1_same.shape[2], s1_same.shape[3]
-        if s1_up is not None:
-            s1_up = self.prev_feature_resize(s1_up, 'up')
-            s1_up = self.preprocess_up(s1_up)
-            size_h, size_w = s1_up.shape[2], s1_up.shape[3]
+    def forward(self, s0, s1_down, s1_same, s1_up, n_alphas, train=True):
+        if train:
+            if s1_down is not None:
+                s1_down = self.preprocess_down(s1_down)
+                size_h, size_w = s1_down.shape[2], s1_down.shape[3]
+            if s1_same is not None:
+                s1_same = self.preprocess_same(s1_same)
+                size_h, size_w = s1_same.shape[2], s1_same.shape[3]
+            if s1_up is not None:
+                s1_up = self.prev_feature_resize(s1_up, 'up')
+                s1_up = self.preprocess_up(s1_up)
+                size_h, size_w = s1_up.shape[2], s1_up.shape[3]
 
+            all_states = []
+            if s0 is not None:
+                s0 = F.interpolate(s0, (size_h, size_w), mode='bilinear') if (
+                    s0.shape[2] < size_h) or (s0.shape[3] < size_w) else s0
+                s0 = self.pre_preprocess(s0)
+                if s1_down is not None:
+                    states_down = [s0, s1_down]
+                    all_states.append(states_down)
+                    del s1_down
+                if s1_same is not None:
+                    states_same = [s0, s1_same]
+                    all_states.append(states_same)
+                    del s1_same
+                if s1_up is not None:
+                    states_up = [s0, s1_up]
+                    all_states.append(states_up)
+                    del s1_up
+            else:
+                if s1_down is not None:
+                    states_down = [0, s1_down]
+                    all_states.append(states_down)
+                if s1_same is not None:
+                    states_same = [0, s1_same]
+                    all_states.append(states_same)
+                if s1_up is not None:
+                    states_up = [0, s1_up]
+                    all_states.append(states_up)
+            del s0
+            final_concates = []
+            for states in all_states:
+                offset = 0
+                for i in range(self.B):
+                    new_states = []
+                    for j, h in enumerate(states):
+                        branch_index = offset + j
+                        if self._ops[branch_index] is None:
+                            continue
+                        if train:
+                            new_state = self._ops[branch_index](
+                                h, n_alphas[branch_index])
+                            new_states.append(new_state)
+                        else:
+                            if 1 in n_alphas[branch_index]:
+                                new_state = self._ops[branch_index](
+                                    h, n_alphas[branch_index])
+                                new_states.append(new_state)
+
+                    s = sum(new_states)
+                    offset += len(states)
+                    states.append(s)
+
+                concat_feature = torch.cat(states[-self.B:], dim=1)
+                final_concates.append(concat_feature)
+            return final_concates
+
+
+    def latency(self, s1_down, s1_same, s1_up, n_alphas):
         all_states = []
         if s0 is not None:
-            s0 = F.interpolate(s0, (size_h, size_w), mode='bilinear') if (
-                s0.shape[2] < size_h) or (s0.shape[3] < size_w) else s0
-            s0 = self.pre_preprocess(s0)
             if s1_down is not None:
                 states_down = [s0, s1_down]
                 all_states.append(states_down)
-                del s1_down
             if s1_same is not None:
                 states_same = [s0, s1_same]
                 all_states.append(states_same)
-                del s1_same
             if s1_up is not None:
                 states_up = [s0, s1_up]
                 all_states.append(states_up)
-                del s1_up
         else:
             if s1_down is not None:
                 states_down = [0, s1_down]
@@ -126,24 +190,24 @@ class Cell(nn.Module):
             if s1_up is not None:
                 states_up = [0, s1_up]
                 all_states.append(states_up)
-        del s0
-        final_concates = []
+
+        latency_list = []
         for states in all_states:
             offset = 0
-            for i in range(self.B):
+            for i in range(self._steps):
                 new_states = []
-                for j, h in enumerate(states):
+                for j, _ in enumerate(states):
                     branch_index = offset + j
                     if self._ops[branch_index] is None:
                         continue
-                    new_state = self._ops[branch_index](
-                        h, n_alphas[branch_index])
+                    new_state = self._ops[branch_index].latency(
+                         n_alphas[branch_index])
                     new_states.append(new_state)
 
                 s = sum(new_states)
                 offset += len(states)
                 states.append(s)
-
-            concat_feature = torch.cat(states[-self.B:], dim=1)
-            final_concates.append(concat_feature)
-        return final_concates
+            total_latency = sum(states)
+            
+            latency_list.append(total_latency)
+        return latency_list
