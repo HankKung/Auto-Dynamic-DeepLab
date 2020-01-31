@@ -3,7 +3,7 @@ import torch.nn as nn
 from modeling.operations import *
 from modeling.genotypes import PRIMITIVES
 from modeling.genotypes import Genotype
-from modeling.genotypes import aspp_train
+from modeling.aspp_train import ASPP_train
 
 import numpy as np
 import torch.backends.cudnn as cudnn
@@ -152,14 +152,11 @@ w4 = scale_dimension(w, 0.03125)
 x4 = torch.cuda.FloatTensor(1, 800, h4, w4).normal_()
 x4=x4.cuda()
 
-aspp_0 = nn.Sequential (
-            ASPP (100, 256, 19, 4, BatchNorm=nn.BatchNorm2d)).cuda()
-aspp_1 = nn.Sequential (
-            ASPP (200, 256, 19, 2, BatchNorm=nn.BatchNorm2d)).cuda()
-aspp_2 = nn.Sequential (
-            ASPP (400, 256 ,19, 1, BatchNorm=nn.BatchNorm2d)).cuda()
-aspp_3 = nn.Sequential (
-            ASPP (800, 256, 19, 0.5, BatchNorm=nn.BatchNorm2d)).cuda()
+aspp_0 = ASPP_train (100, 256, 19, mul=4, nn.BatchNorm2d).cuda()
+aspp_1 = ASPP_train (200, 256, 19, mul=2, nn.BatchNorm2d).cuda()
+aspp_2 = ASPP_train (400, 256 ,19, mul=1, nn.BatchNorm2d).cuda()
+aspp_3 = ASPP_train (800, 256, 19, mul=0.5, nn.BatchNorm2d).cuda()
+
 aspp_0.eval()
 aspp_1.eval()
 aspp_2.eval()
@@ -176,6 +173,7 @@ torch.cuda.synchronize() # wait for mm to finish
 
 
 with torch.no_grad():
+    time=0
     for i in range(10000):
         torch.cuda.synchronize()
         start = torch.cuda.Event(enable_timing=True)
@@ -187,9 +185,10 @@ with torch.no_grad():
         if i >4999:
             time+=start.elapsed_time(end)
         torch.cuda.synchronize()
-    aspp_1[0] = time/5000
+    aspp_dict[0] = time/5000
 
 with torch.no_grad():
+    time=0
     for i in range(10000):
         torch.cuda.synchronize()
         start = torch.cuda.Event(enable_timing=True)
@@ -201,9 +200,10 @@ with torch.no_grad():
         if i >4999:
             time+=start.elapsed_time(end)
         torch.cuda.synchronize()
-    aspp_1[1] = time/5000
+    aspp_dict[1] = time/5000
 
 with torch.no_grad():
+    time=0
     for i in range(10000):
         torch.cuda.synchronize()
         start = torch.cuda.Event(enable_timing=True)
@@ -215,9 +215,10 @@ with torch.no_grad():
         if i >4999:
             time+=start.elapsed_time(end)
         torch.cuda.synchronize()
-    aspp_1[2] = time/5000
+    aspp_dict[2] = time/5000
 
 with torch.no_grad():
+    time=0
     for i in range(10000):
         torch.cuda.synchronize()
         start = torch.cuda.Event(enable_timing=True)
@@ -229,7 +230,7 @@ with torch.no_grad():
         if i >4999:
             time+=start.elapsed_time(end)
         torch.cuda.synchronize()
-    aspp_1[3] = time/5000
-
+    aspp_dict[3] = time/5000
+print(aspp_dict)
 np.save('latency_aspp.npy', aspp_dict) 
 
