@@ -293,6 +293,7 @@ class Model_2 (nn.Module):
         B_2 = args.B_2
         B_1 = args.B_1
 
+        self.args = args
         num_model_1_layers = args.num_model_1_layers
         self.num_model_2_layers = len(network_arch) - num_model_1_layers
 
@@ -404,7 +405,10 @@ class Model_2 (nn.Module):
             x = self.decoder_2(x, low_level, size)     
             del low_level    
 
-            return y1, x+y1
+            if self.args.skip_con:
+                return y1, x+y1
+            else: 
+                return y1, x
 
         else:
             torch.cuda.synchronize()
@@ -432,7 +436,10 @@ class Model_2 (nn.Module):
             torch.cuda.synchronize()
             tic_2 = time.perf_counter()
 
-            return y1, x+y1, tic_1 - tic, tic_2 - tic
+            if self.args.skip_con:
+                return y1, x+y1, tic_1 - tic, tic_2 - tic
+            else:
+                return y1. x, tic_1 - tic, tic_2 - tic
 
 
     def _init_weight(self):

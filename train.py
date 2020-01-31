@@ -296,6 +296,7 @@ def main():
     parser.add_argument('--F_1', type=int, default=20)
     parser.add_argument('--B_2', type=int, default=5)
     parser.add_argument('--B_1', type=int, default=5)
+    parser.add_argument('--skip_con', type=bool, default=True)
 
 
     """ dataset config"""

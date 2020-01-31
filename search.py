@@ -298,6 +298,7 @@ class Trainer(object):
     def pareto_eval(self):
         ex_dir_name = self.saver.experiment_dir
         pareto_optimal = []
+        self.model.eval_mode()
         for epoch in range(self.args.epoch-5, self.args.epoch):
             for num in range(10):
                 if num == 9:
@@ -360,12 +361,13 @@ def main():
     parser.add_argument('--F', type=int, default=8)
     parser.add_argument('--B_2', type=int, default=5)
     parser.add_argument('--B_1', type=int, default=5)
+    parser.add_argument('--skip_con', type=bool, default=True)
 
 
     """ Training Setting """
-    parser.add_argument('--start_epoch', type=int, default=0, metavar='N', help='start epochs (default:0)')
+    parser.add_argument('--start-epoch', type=int, default=0, metavar='N', help='start epochs (default:0)')
     parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: auto)')
-    parser.add_argument('--alpha_epoch', type=int, default=20, metavar='N', help='epoch to start training alphas')
+    parser.add_argument('--alpha-epoch', type=int, default=20, metavar='N', help='epoch to start training alphas')
     parser.add_argument('--sync-bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
     parser.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'focal'], help='loss func type (default: ce)')
     parser.add_argument('--clean-module', type=int, default=0)
@@ -378,12 +380,12 @@ def main():
     parser.add_argument('--workers', type=int, default=2, metavar='N', help='dataloader threads')
     parser.add_argument('--batch-size', type=int, default=2, metavar='N')
     parser.add_argument('--test-batch-size', type=int, default=1, metavar='N')
-    parser.add_argument('--use_balanced_weights', action='store_true', default=False, help='whether to use balanced weights (default: False)')
+    parser.add_argument('--use-balanced-weights', action='store_true', default=False, help='whether to use balanced weights (default: False)')
 
 
     """ optimizer params """
     parser.add_argument('--lr', type=float, default=0.025, metavar='LR')
-    parser.add_argument('--min_lr', type=float, default=0.001)
+    parser.add_argument('--min-lr', type=float, default=0.001)
     parser.add_argument('--arch-lr', type=float, default=3e-3, metavar='LR', help='learning rate for alpha and beta in architect searching process')
     parser.add_argument('--lr-scheduler', type=str, default='cos',choices=['poly', 'step', 'cos'])
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M', help='momentum (default: 0.9)')
@@ -391,7 +393,7 @@ def main():
     parser.add_argument('--arch-weight-decay', type=float, default=1e-3, metavar='M', help='w-decay (default: 5e-4)')
     parser.add_argument('--nesterov', action='store_true', default=False, help='whether use nesterov (default: False)')
     parser.add_argument('--use_amp', action='store_true', default=False) 
-    parser.add_argument('--opt_level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
+    parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
 
 
     """ cuda, seed and logging """
@@ -436,7 +438,8 @@ def main():
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
-        if epoch >= trainer.args.epochs - 5 and not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
+        if epoch >= trainer.args.epochs - 5 and not trainer.args.no_val \
+        and epoch % args.eval_interval == (args.eval_interval - 1) or epoch == args.alpha_epoch:
             trainer.validation(epoch)
 
     trainer.writer.close()
