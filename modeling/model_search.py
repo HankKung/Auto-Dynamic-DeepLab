@@ -268,10 +268,10 @@ class Model_search (nn.Module) :
         level_16 = []
         level_32 = []
 
-        level_4_dense = []
-        level_8_dense = []
-        level_16_dense = []
-        level_32_dense = []
+        level_4_dense = [0]*1
+        level_8_dense = [0]*1
+        level_16_dense = [0]*1
+        level_32_dense = [0]*1
 
         # lat_4 = []
         # lat_8 = []
@@ -341,17 +341,21 @@ class Model_search (nn.Module) :
 
             if layer == 0 :
                 level4_new, = self.cells[count] (temp, None, level_4[-1], None, normalized_alphas_1)
-                # lat_4_new = self.cells[count].latency(None, self.lat_4[-1], None, normalized_alphas_1)
+                lat_4_new = self.cells[count].latency(None, self.lat_4[-1], None, normalized_alphas_1)
                 count += 1
                 level8_new, = self.cells[count] (temp, level_4[-1], None, None, normalized_alphas_1)
-                # lat_8_new = self.cells[count].latency(level_4[-1], None, None, normalized_alphas_1)
+                lat_8_new = self.cells[count].latency(level_4[-1], None, None, normalized_alphas_1)
                 count += 1
 
                 level4_new = normalized_betas[layer][0][1] * level4_new
                 level8_new = normalized_betas[layer][0][2] * level8_new
+                lat_4_new = normalized_betas[layer][0][1] * lat_4_new
+                lat_8_new = normalized_betas[layer][0][2] * lat_8_new
                 
                 level_4.append (level4_new)
                 level_8.append (level8_new)
+                lat_4.append (lat_4_new)
+                lat_8.append (lat_8_new)
                 del temp
                 level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
                 level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
@@ -364,29 +368,50 @@ class Model_search (nn.Module) :
                                                                 level_4[-1],
                                                                 level_8[-1],
                                                                 normalized_alphas_1)
-                count += 1
+                lat_4_new_1, lat_4_new_2 = self.cells[count].latency(None,
+                                                                    lat_4[-1],
+                                                                    lat_8[-1],
+                                                                    normalized_alphas_1)
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+                lat_4_new = normalized_betas[layer][0][1] * lat4_new_1 + normalized_betas[layer][1][0] * lat_4_new_2
+                count += 1
+
 
                 level8_new_1, level8_new_2 = self.cells[count] (level_4[-2],
                                                                 level_4[-1],
                                                                 level_8[-1],
                                                                 None,
                                                                 normalized_alphas_1)
-                count += 1
+                lat_8_new_1, lat_8_new_2 = self.cells[count].latency(lat_4[-1],
+                                                                    lat_8[-1],
+                                                                    None,
+                                                                    normalized_alphas_1)
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2
+                lat_8_new = normalized_betas[layer][0][2] * lat_8_new_1 + normalized_betas[layer][1][1] * lat_8_new_2
+                count += 1
+
 
                 level16_new, = self.cells[count] (level_4[-2],
                                                   level_8[-1],
                                                   None,
                                                   None,
                                                   normalized_alphas_1)
+                lat_16_new, = self.cells[count].latency(lat_8[-1],
+                                                        None,
+                                                        None,
+                                                        normalized_alphas_1)
+
                 level16_new = normalized_betas[layer][1][2] * level16_new
+                lat_16_new = normalized_betas[layer][1][2] * lat_16_new
                 count += 1
 
 
                 level_4.append (level4_new)
                 level_8.append (level8_new)
                 level_16.append (level16_new)
+                lat_4.append (lat_4_new)
+                lat_8.append (lat_8_new)
+                lat_16.append(lat_16_new)
 
                 level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
                 level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
@@ -399,24 +424,41 @@ class Model_search (nn.Module) :
                                                                 level_4[-1],
                                                                 level_8[-1],
                                                                 normalized_alphas_1)
+                lat_4_new_1, lat_4_new_2 = self.cells[count].latency(None,
+                                                                    lat_4[-1],
+                                                                    lat_8[-1]
+                                                                    normalized_alphas_1)
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+                lat_4_new = normalized_betas[layer][0][1] * lat_4_new_1 + normalized_betas[layer][1][0] * lat_4_new_2
+
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (level_8[-2],
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
                                                                               normalized_alphas_1)
-                count += 1
+                lat_8_new_1, lat_8_new_2, lat_8,new_3 = self.cells[count].latency(lat_4[-1],
+                                                                                lat_8[-1],
+                                                                                lat_16[-1]
+                                                                                normalized_alphas_1)
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
+                lat_8_new = normalized_betas[layer][0][2] * lat_8_new_1 + normalized_betas[layer][1][1] * lat_8_new_2 + normalized_betas[layer][2][0] * lat_8_new_3
+                count += 1
+
 
                 level16_new_1, level16_new_2 = self.cells[count] (level_8[-2],
                                                                   level_8[-1],
                                                                   level_16[-1],
                                                                   None,
                                                                   normalized_alphas_1)
-                count += 1
+                lat_16_new_1, lat_16_new_2 = self.cells[count].latency(lat_8[-1],
+                                                                      lat_16[-1],
+                                                                      None,
+                                                                      normalized_alphas_1)
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2
+                lat_16_new = normalized_betas[layer][1][2] * lat_16_new_1 + normalized_betas[layer][2][1] * lat_16_new_2
+                count += 1
 
 
                 level32_new, = self.cells[count] (level_8[-2],
@@ -424,13 +466,24 @@ class Model_search (nn.Module) :
                                                   None,
                                                   None,
                                                   normalized_alphas_1)
+                lat_32_new, = self.cells[count].latency(lat_16[-1],
+                                                      None,
+                                                      None,
+                                                      normalized_alphas_1)
                 level32_new = normalized_betas[layer][2][2] * level32_new
+                lat_32_new = normalized_betas[layer][2][2] * lat_32_new
                 count += 1
+
 
                 level_4.append (level4_new)
                 level_8.append (level8_new)
                 level_16.append (level16_new)
                 level_32.append (level32_new)
+
+                lat_4.append (lat_4_new)
+                lat_8.append (lat_8_new)
+                lat_16.append(lat_16_new)
+                lat_32.append(lat_32_new)
 
                 level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
                 level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
@@ -443,24 +496,40 @@ class Model_search (nn.Module) :
                                                                 level_4[-1],
                                                                 level_8[-1],
                                                                 normalized_alphas_1)
-                count += 1
+                lat_4_new_1, lat_4_new_2 = self.cells[count].latency(None,
+                                                                lat_4[-1],
+                                                                lat_8[-1]
+                                                                normalized_alphas_1)
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+                lat_4_new = normalized_betas[layer][0][1] * lat_4_new_1 + normalized_betas[layer][1][0] * lat_4_new_2
+                count += 1
+
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
                                                                               normalized_alphas_1)
-                count += 1
+                lat_8_new_1, lat_8_new_2, lat_8_new_3 = self.cells[count].latency(lat_4[-1],
+                                                                                  lat_8[-1],
+                                                                                  lat_16[-1],
+                                                                                  normalized_alphas_1)
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
+                lat_8_new = normalized_betas[layer][0][2] * lat_8_new_1 + normalized_betas[layer][1][1] * lat_8_new_2 + normalized_betas[layer][2][0] * lat_8_new_3
+                count += 1
 
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
                                                                                  normalized_alphas_1)
-                count += 1
+                lat_16_new_1, lat_16_new_2, lat_16_new_3 = self.cells[count].latency(lat_8[-1],
+                                                                                     lat_16[-1],
+                                                                                     lat_32[-1],
+                                                                                     normalized_alphas_1)
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
+                lat_16_new = normalized_betas[layer][1][2] * lat_16_new_1 + normalized_betas[layer][2][1] * lat_16_new_2 + normalized_betas[layer][3][0] * lat_16_new_3
+                count += 1
 
 
                 level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
@@ -468,13 +537,24 @@ class Model_search (nn.Module) :
                                                                   level_32[-1],
                                                                   None,
                                                                   normalized_alphas_1)
-                count += 1
+                lat_32_new_1, lat_32_new_2 = self.cells[count].latency(lat_16[-1],
+                                                                      lat_32[-1],
+                                                                      None,
+                                                                      normalized_alphas_1)
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
+                lat_32_new = normalized_betas[layer][2][2] * lat_32_new_1 + normalized_betas[layer][3][1] * lat_32_new_2
+                count += 1
+
 
                 level_4.append (level4_new)
                 level_8.append (level8_new)
                 level_16.append (level16_new)
                 level_32.append (level32_new)
+
+                lat_4.append (lat_4_new)
+                lat_8.append (lat_8_new)
+                lat_16.append(lat_16_new)
+                lat_32.append(lat_32_new)
 
                 level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
                 level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
@@ -487,24 +567,40 @@ class Model_search (nn.Module) :
                                                                 level_4[-1],
                                                                 level_8[-1],
                                                                 normalized_alphas_1)
-                count += 1
+                lat_4_new_1, lat_4_new_2 = self.cells[count].latency(None,
+                                                                lat_4[-1],
+                                                                lat_8[-1]
+                                                                normalized_alphas_1)
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+                lat_4_new = normalized_betas[layer][0][1] * lat_4_new_1 + normalized_betas[layer][1][0] * lat_4_new_2
+                count += 1
+
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
                                                                               normalized_alphas_1)
-                count += 1
+                lat_8_new_1, lat_8_new_2, lat_8_new_3 = self.cells[count].latency(lat_4[-1],
+                                                                                  lat_8[-1],
+                                                                                  lat_16[-1],
+                                                                                  normalized_alphas_1)
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
+                lat_8_new = normalized_betas[layer][0][2] * lat_8_new_1 + normalized_betas[layer][1][1] * lat_8_new_2 + normalized_betas[layer][2][0] * lat_8_new_3
+                count += 1
 
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
                                                                                  normalized_alphas_1)
-                count += 1
+                lat_16_new_1, lat_16_new_2, lat_16_new_3 = self.cells[count].latency(lat_8[-1],
+                                                                                    lat_16[-1],
+                                                                                    lat_32[-1],
+                                                                                    normalized_alphas_1)
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
+                lat_16_new = normalized_betas[layer][1][2] * lat_16_new_1 + normalized_betas[layer][2][1] * lat_16_new_2 + normalized_betas[layer][3][0] * lat_16_new_3
+                count += 1
 
 
                 level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
@@ -512,14 +608,23 @@ class Model_search (nn.Module) :
                                                                   level_32[-1],
                                                                   None,
                                                                   normalized_alphas_1)
-                count += 1
+                lat_32_new_1, lat_32_new_2 = self.cells[count].latency(lat_16[-1],
+                                                                      lat_32[-1],
+                                                                      None,
+                                                                      normalized_alphas_1)
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
-
+                lat_32_new = normalized_betas[layer][2][2] * lat_32_new_1 + normalized_betas[layer][3][1] * lat_32_new_2
+                count += 1
 
                 level_4.append (level4_new)
                 level_8.append (level8_new)
                 level_16.append (level16_new)
                 level_32.append (level32_new)
+
+                lat_4.append (lat_4_new)
+                lat_8.append (lat_8_new)
+                lat_16.append(lat_16_new)
+                lat_32.append(lat_32_new)
 
                 level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
                 level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
@@ -532,39 +637,66 @@ class Model_search (nn.Module) :
                                                                 level_4[-1],
                                                                 level_8[-1],
                                                                 normalized_alphas_1)
-                count += 1
+                lat_4_new_1, lat_4_new_2 = self.cells[count].latency(None,
+                                                                lat_4[-1],
+                                                                lat_8[-1]
+                                                                normalized_alphas_1)
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
-                
+                lat_4_new = normalized_betas[layer][0][1] * lat_4_new_1 + normalized_betas[layer][1][0] * lat_4_new_2
+                count += 1
+
+
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
                                                                               normalized_alphas_1)
+                lat_8_new_1, lat_8_new_2, lat_8_new_3 = self.cells[count].latency(lat_4[-1],
+                                                                                  lat_8[-1],
+                                                                                  lat_16[-1],
+                                                                                  normalized_alphas_1)
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
+                lat_8_new = normalized_betas[layer][0][2] * lat_8_new_1 + normalized_betas[layer][1][1] * lat_8_new_2 + normalized_betas[layer][2][0] * lat_8_new_3
                 count += 1
 
-                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
                                                                                  normalized_alphas_1)
-                count += 1
+                lat_16_new_1, lat_16_new_2, lat_16_new_3 = self.cells[count].latency(lat_8[-1],
+                                                                            lat_16[-1],
+                                                                            lat_32[-1],
+                                                                            normalized_alphas_1)
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
-                
+                lat_16_new = normalized_betas[layer][1][2] * lat_16_new_1 + normalized_betas[layer][2][1] * lat_16_new_2 + normalized_betas[layer][3][0] * lat_16_new_3
+                count += 1
+
+
                 level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
                                                                   level_16[-1],
                                                                   level_32[-1],
                                                                   None,
                                                                   normalized_alphas_1)
-                count += 1
+                lat_32_new_1, lat_32_new_2 = self.cells[count].latency(lat_16[-1],
+                                                                      lat_32[-1],
+                                                                      None,
+                                                                      normalized_alphas_1)
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
+                lat_32_new = normalized_betas[layer][2][2] * lat_32_new_1 + normalized_betas[layer][3][1] * lat_32_new_2
+                count += 1
 
 
                 level_4.append (level4_new)
                 level_8.append (level8_new)
                 level_16.append (level16_new)
                 level_32.append (level32_new)
+
+                lat_4.append (lat_4_new)
+                lat_8.append (lat_8_new)
+                lat_16.append(lat_16_new)
+                lat_32.append(lat_32_new)
 
                 level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
                 level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
@@ -836,6 +968,11 @@ class Model_search (nn.Module) :
 
     def weight_parameters(self):
         return [param for name, param in self.named_parameters() if name not in self._arch_param_names]
+
+    def eval_mode(self):
+        for cell in self.cells:
+            cell.train = False
+
 
 def main () :
     model = Model_search (7, 12, None)
