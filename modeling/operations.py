@@ -6,7 +6,7 @@ OPS = {
   'none' : lambda C, stride, BatchNorm, eps, momentum, affine: Zero(stride),
   'avg_pool_3x3' : lambda C, stride, BatchNorm, eps, momentum, affine: nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False),
   'max_pool_3x3' : lambda C, stride, BatchNorm, eps, momentum, affine: nn.MaxPool2d(3, stride=stride, padding=1),
-  'skip_connect' : lambda C, stride, BatchNorm, eps, momentum, affine: Identity() if stride == 1 else FactorizedReduce(C, C, BatchNorm, affine=affine),
+  'skip_connect' : lambda C, stride, BatchNorm, eps, momentum, affine: Identity(),
   'sep_conv_3x3' : lambda C, stride, BatchNorm, eps, momentum, affine: SepConv(C, C, 3, stride, 1, BatchNorm, eps=eps, momentum=momentum, affine=affine),
   'sep_conv_5x5' : lambda C, stride, BatchNorm, eps, momentum, affine: SepConv(C, C, 5, stride, 2, BatchNorm, eps=eps, momentum=momentum, affine=affine),
   'dil_conv_3x3' : lambda C, stride, BatchNorm, eps, momentum, affine: DilConv(C, C, 3, stride, 2, 2, BatchNorm, eps=eps, momentum=momentum, affine=affine),
