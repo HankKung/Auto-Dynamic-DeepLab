@@ -111,7 +111,8 @@ class trainNew(object):
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
-        self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
+
+        self.criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255).cuda()
         self.model, self.optimizer = model, optimizer
 
         """ Define Evaluator """
@@ -309,7 +310,6 @@ def main():
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
     parser.add_argument('--sync-bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
     parser.add_argument('--freeze-bn', type=bool, default=False, help='whether to freeze bn parameters (default: False)')
-    parser.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'focal'])
     parser.add_argument('--epochs', type=int, default=None, metavar='N')
     parser.add_argument('--start_epoch', type=int, default=0)
     parser.add_argument('--batch-size', type=int, default=None, metavar='N')
@@ -335,8 +335,8 @@ def main():
 
     """ checking point """
     parser.add_argument('--resume', type=str, default=None, help='put the path to resuming file if needed')
-    parser.add_argument('--saved-arch-path', type=str, default=None, help='put the path to alphas and betas')
-    parser.add_argument('--checkname', type=str, default=None, help='set the checkpoint name')
+    parser.add_argument('--saved-arch-path', type=str, default='searched_arch/')
+    parser.add_argument('--checkname', type=str, default=None)
 
 
     """ finetuning pre-trained models """

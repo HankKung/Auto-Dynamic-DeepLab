@@ -50,7 +50,6 @@ class Saver(object):
         p['datset'] = self.args.dataset
         p['lr'] = self.args.lr
         p['lr_scheduler'] = self.args.lr_scheduler
-        p['loss_type'] = self.args.loss_type
         p['epoch'] = self.args.epochs
 
 

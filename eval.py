@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 import numpy as np
 
 from mypath import Path
@@ -20,17 +21,12 @@ from modeling.sync_batchnorm.replicate import patch_replication_callback
 from tqdm import tqdm
 from torchviz import make_dot, make_dot_from_trace
 from apex import amp
-import time
+from ptflops import get_model_complexity_info
 
 
 class Evaluation(object):
     def __init__(self, args):
         self.args = args
-
-        # Define Saver
-        self.saver = Saver(args)
-        # Define Tensorboard Summary
-        self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
 
         # Define Dataloader
@@ -207,6 +203,15 @@ class Evaluation(object):
         print("device_inference_time:{}, cloud_inference_time: {}".format(time_meter_1.average(), time_meter_2.average()))
         print("device_pred_time:{}, cloud_pred_time: {}".format(pred_1_meter.average(), pred_2_meter.average()))
 
+
+    def mac(self):
+        self.model.eval()
+        with torch.no_grad():
+            flops, params = get_model_complexity_info(self.model, (3, 1025, 2049), as_strings=True, print_per_layer_stat=False)
+            print('{:<30}  {:<8}'.format('Computational complexity: ', flops))
+            print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+
+
 def main():
     
     """ model setting """
@@ -217,50 +222,38 @@ def main():
     parser.add_argument('--F_1', type=int, default=20)
     parser.add_argument('--B_2', type=int, default=5)
     parser.add_argument('--B_1', type=int, default=5)
+    parser.add_argument('--skip_con', type=bool, default=True)
 
 
     """ dataset config"""
-    parser.add_argument('--dataset', type=str, default='cityscapes',
-                        choices=['pascal', 'coco', 'cityscapes'],
-                        help='dataset name (default: pascal)')
-    parser.add_argument('--workers', type=int, default=1,
-                        metavar='N', help='dataloader threads')
+    parser.add_argument('--dataset', type=str, default='cityscapes')
+    parser.add_argument('--workers', type=int, default=1, metavar='N')
 
 
     """ training config """
     parser.add_argument('--use-amp', type=bool, default=False)
-    parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
-    parser.add_argument('--sync-bn', type=bool, default=None,
-                        help='whether to use sync bn (default: auto)')
-    parser.add_argument('--freeze-bn', type=bool, default=False,
-                        help='whether to freeze bn parameters (default: False)')
+    parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'])
+    parser.add_argument('--sync-bn', type=bool, default=None)
+    parser.add_argument('--freeze-bn', type=bool, default=False)
     parser.add_argument('--loss-type', type=str, default='ce',
                         choices=['ce', 'focal'],
                         help='loss func type (default: ce)')
     parser.add_argument('--batch-size', type=int, default=1, metavar='N')
     parser.add_argument('--test-batch-size', type=int, default=1, metavar='N')
     parser.add_argument('--use-balanced-weights', action='store_true', default=False)
-
-
     parser.add_argument('--clean-module', type=int, default=0)
 
 
     """ cuda, seed and logging """
     parser.add_argument('--no-cuda', action='store_true', default=False)
-    parser.add_argument('--gpu-ids', type=str, default='0',
-                        help='use which gpu to train, must be a \
-                        comma-separated list of integers only (default=0)')
-    parser.add_argument('--seed', type=int, default=1, metavar='S',
-                        help='random seed (default: 1)')
+    parser.add_argument('--gpu-ids', type=str, default='0')
+    parser.add_argument('--seed', type=int, default=1, metavar='S')
 
 
     """ checking point """
-    parser.add_argument('--resume', type=str, default=None,
-                        help='put the path to resuming file if needed')
-    parser.add_argument('--saved-arch-path', type=str, default=None,
-                        help='put the path to alphas and betas')
-    parser.add_argument('--checkname', type=str, default=None,
-                        help='set the checkpoint name')
+    parser.add_argument('--resume', type=str, default=None)
+    parser.add_argument('--saved-arch-path', type=str, default='searched_arch/')
+    parser.add_argument('--checkname', type=str, default=None)
 
 
     args = parser.parse_args()

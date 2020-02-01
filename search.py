@@ -65,8 +65,8 @@ class Trainer(object):
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
-        self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
 
+        self.criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255).cuda()
         """ Define network """
         model = Model_search (num_classes=self.nclass, num_layers=12, F=self.args.F,
                              B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
@@ -156,6 +156,7 @@ class Trainer(object):
     def training(self, epoch):
         train_loss = 0.0
         search_loss = 0.0
+        latency_loss = 0.0
         self.model.train()
         tbar = tqdm(self.train_loaderA)
         num_img_tr = len(self.train_loaderA)
@@ -165,10 +166,10 @@ class Trainer(object):
                 image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            output_1, output_2 = self.model(image)
+            output_1, output_2, lat = self.model(image)
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
-            loss = (loss_1 + loss_2)/2
+            loss = (loss_1 + loss_2)/2 + self.args.lat_rate * lat
 
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -185,13 +186,13 @@ class Trainer(object):
                     image_search, target_search = image_search.cuda(), target_search.cuda()
 
                 self.architect_optimizer.zero_grad()
-                output_search_1, output_search_2 = self.model(image_search)
+                output_search_1, output_search_2, lat = self.model(image_search)
 
                 arch_loss_1 = self.criterion(output_search_1, target_search)
                 arch_loss_2 = self.criterion(output_search_2, target_search)
-                arch_loss = (arch_loss_1 + arch_loss_2)/2
+                arch_loss = (arch_loss_1 + arch_loss_2)/2 + self.args.lat_rate * lat
                 search_loss += arch_loss.item()
-
+                latency_loss += self.args.lat_rate * lat
                 if self.use_amp:
                     with amp.scale_loss(arch_loss, self.architect_optimizer) as arch_scaled_loss:
                        arch_scaled_loss.backward()
@@ -204,7 +205,7 @@ class Trainer(object):
                         self.decoder_save(epoch, (i//20) -1)
 
             train_loss += loss.item()
-            tbar.set_description('Train loss: %.3f-------Search loss: %.3f' % (train_loss / (i + 1), search_loss / (i+1)))
+            tbar.set_description('Train loss: %.3f --Search loss: %.3f --Latency: %.3f' % (train_loss/(i+1), search_loss/(i+1), latency_loss/(i+1)))
 
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
@@ -223,10 +224,10 @@ class Trainer(object):
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
-                output_1, output_2 = self.model(image)
+                output_1, output_2, lat = self.model(image)
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
-            loss = (loss_1 + loss_2)/2
+            loss = (loss_1 + loss_2)/2 + self.args.lat_rate * lat
             test_loss += loss.item()
 
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
@@ -369,7 +370,6 @@ def main():
     parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: auto)')
     parser.add_argument('--alpha-epoch', type=int, default=20, metavar='N', help='epoch to start training alphas')
     parser.add_argument('--sync-bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
-    parser.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'focal'], help='loss func type (default: ce)')
     parser.add_argument('--clean-module', type=int, default=0)
 
 
@@ -394,6 +394,7 @@ def main():
     parser.add_argument('--nesterov', action='store_true', default=False, help='whether use nesterov (default: False)')
     parser.add_argument('--use_amp', action='store_true', default=False) 
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
+    parser.add_argument('--lat-rate', type=float, default=0.001)
 
 
     """ cuda, seed and logging """

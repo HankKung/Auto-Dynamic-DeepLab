@@ -22,7 +22,6 @@ class SegmentationLosses(object):
 
         loss = criterion(logit, target.long())
 
-
         return loss
 
 if __name__ == "__main__":
