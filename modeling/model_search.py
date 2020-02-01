@@ -29,6 +29,9 @@ class Model_search (nn.Module) :
         self.exit_layer = exit_layer
         self._initialize_alphas_betas ()
 
+        latency_aspp_path = '../measure/latency_aspp.npy'
+        self.latency_aspp = np.load(latency_aspp_path, allow_pickle='TRUE').item()
+
         f_initial = F * B_1
         half_f_initial = int(f_initial / 2)
 
@@ -268,15 +271,15 @@ class Model_search (nn.Module) :
         level_16 = []
         level_32 = []
 
-        level_4_dense = [0]*1
-        level_8_dense = [0]*1
-        level_16_dense = [0]*1
-        level_32_dense = [0]*1
+        level_4_dense = []
+        level_8_dense = []
+        level_16_dense = []
+        level_32_dense = []
 
-        # lat_4 = []
-        # lat_8 = []
-        # lat_16 = []
-        # lat_32 = []
+        lat_4 = [0]*1
+        lat_8 = [0]*1
+        lat_16 = [0]*1
+        lat_32 = [0]*1
 
         temp = self.stem0 (x)
         level_4.append (self.stem1(temp))
@@ -698,6 +701,11 @@ class Model_search (nn.Module) :
                 lat_16.append(lat_16_new)
                 lat_32.append(lat_32_new)
 
+                lat_4.append(lat_4[-1] + self.latency_aspp[0] * (normalized_betas[layer][0][1] + normalized_betas[layer][1][2]))
+                lat_8.append(lat_8[-1] + self.latency_aspp[1] * (normalized_betas[layer][0][2] + normalized_betas[layer][1][1] + normalized_betas[layer][2][0]))
+                lat_16.append(lat_16[-1] + self.latency_aspp[2] * (normalized_betas[layer][1][2] + normalized_betas[layer][2][1] + normalized_betas[layer][3][0]))
+                lat_32.append(lat_32[-1] + self.latency_aspp[3] * (normalized_betas[layer][2][2] + normalized_betas[layer][3][1]))
+
                 level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
                 level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
                 level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
@@ -714,25 +722,26 @@ class Model_search (nn.Module) :
                                                                 level_4[-1],
                                                                 level_8[-1],
                                                                 normalized_alphas_2)
-                count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+                count += 1
+
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
                                                                               normalized_alphas_2)
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
                 count += 1
 
-                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
                                                                                  normalized_alphas_2)
-                count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
+                count += 1
 
 
                 level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
@@ -740,8 +749,8 @@ class Model_search (nn.Module) :
                                                                   level_32[-1],
                                                                   None,
                                                                   normalized_alphas_2)
-                count += 1
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
+                count += 1
 
 
                 level_4.append (level4_new)
@@ -760,25 +769,26 @@ class Model_search (nn.Module) :
                                                                 level_4[-1],
                                                                 level_8[-1],
                                                                 normalized_alphas_2)
-                count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+                count += 1
+
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
                                                                               normalized_alphas_2)
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
                 count += 1
 
-                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
                                                                                  normalized_alphas_2)
-                count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
+                count += 1
 
 
                 level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
@@ -786,8 +796,8 @@ class Model_search (nn.Module) :
                                                                   level_32[-1],
                                                                   None,
                                                                   normalized_alphas_2)
-                count += 1
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
+                count += 1
 
 
                 level_4.append (level4_new)
@@ -806,25 +816,26 @@ class Model_search (nn.Module) :
                                                                 level_4[-1],
                                                                 level_8[-1],
                                                                 normalized_alphas_2)
-                count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+                count += 1
+
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense, dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
                                                                               normalized_alphas_2)
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
                 count += 1
 
-                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense, dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
                                                                                  normalized_alphas_2)
-                count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
+                count += 1
 
 
                 level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense, dim=1),
@@ -832,8 +843,8 @@ class Model_search (nn.Module) :
                                                                   level_32[-1],
                                                                   None,
                                                                   normalized_alphas_2)
-                count += 1
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
+                count += 1
 
 
                 level_4.append (level4_new)
@@ -847,25 +858,26 @@ class Model_search (nn.Module) :
                                                                 level_4[-1],
                                                                 level_8[-1],
                                                                 normalized_alphas_2)
-                count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
+                count += 1
+
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
                                                                               normalized_alphas_2)
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
                 count += 1
 
-                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
                                                                                  normalized_alphas_2)
-                count += 1
                 level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
+                count += 1
 
 
                 level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
@@ -873,8 +885,8 @@ class Model_search (nn.Module) :
                                                                   level_32[-1],
                                                                   None,
                                                                   normalized_alphas_2)
-                count += 1
                 level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
+                count += 1
 
 
                 level_4.append (level4_new)
@@ -924,7 +936,9 @@ class Model_search (nn.Module) :
 
         exit_2_sum_feature_map = exit_2_4_new + exit_2_8_new + exit_2_16_new + exit_2_32_new
 
-        return exit_1_sum_feature_map, exit_2_sum_feature_map
+        total_latency = lat_4[-1] + lat_8[-1] + lat_16[-1] + lat_32[-1]
+
+        return exit_1_sum_feature_map, exit_2_sum_feature_map, total_latency
 
 
     def _init_weight(self):

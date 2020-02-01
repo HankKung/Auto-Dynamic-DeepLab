@@ -13,12 +13,14 @@ class MixedOp (nn.Module):
         super(MixedOp, self).__init__()
         eps=1e-5
         momentum=0.1
+        latency_op_path = '../measure/latency_op.npy'
+        OPT_lat = np.load(latency_op_path, allow_pickle='TRUE').item()
         self._ops = nn.ModuleList()
         self._ops_latency=[]
 
-        for primitive in PRIMITIVES:
+        for i, primitive in enumerate(PRIMITIVES):
             op = OPS[primitive](C, stride, BatchNorm, eps, momentum, False)
-            lat = OPS_lat[primitive][C]
+            lat = OPS_lat[i][C]
             if 'pool' in primitive:
                 op = nn.Sequential(op, BatchNorm(C, eps=eps, momentum=momentum, affine=False))
             self._ops.append(op)
@@ -37,6 +39,8 @@ class MixedOp (nn.Module):
         else:
             w = torch.argmax(weights)
             return self._ops_latency[w] 
+
+            
 class Cell(nn.Module):
 
     def __init__(self,

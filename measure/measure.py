@@ -152,10 +152,10 @@ w4 = scale_dimension(w, 0.03125)
 x4 = torch.cuda.FloatTensor(1, 800, h4, w4).normal_()
 x4=x4.cuda()
 
-aspp_0 = ASPP_train (100, 256, 19, mul=4, nn.BatchNorm2d).cuda()
-aspp_1 = ASPP_train (200, 256, 19, mul=2, nn.BatchNorm2d).cuda()
-aspp_2 = ASPP_train (400, 256 ,19, mul=1, nn.BatchNorm2d).cuda()
-aspp_3 = ASPP_train (800, 256, 19, mul=0.5, nn.BatchNorm2d).cuda()
+aspp_0 = ASPP_train (100, 256, 19, nn.BatchNorm2d, mul=4).cuda()
+aspp_1 = ASPP_train (200, 256, 19, nn.BatchNorm2d, mul=2).cuda()
+aspp_2 = ASPP_train (400, 256 ,19, nn.BatchNorm2d, mul=1).cuda()
+aspp_3 = ASPP_train (800, 256, 19, nn.BatchNorm2d, mul=0.5).cuda()
 
 aspp_0.eval()
 aspp_1.eval()
@@ -179,7 +179,7 @@ with torch.no_grad():
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         start.record()
-        aspp_0(x0)
+        aspp_0(x1)
         end.record()
         torch.cuda.synchronize()
         if i >4999:
@@ -194,7 +194,7 @@ with torch.no_grad():
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         start.record()
-        aspp_1(x1)
+        aspp_1(x2)
         end.record()
         torch.cuda.synchronize()
         if i >4999:
@@ -209,7 +209,7 @@ with torch.no_grad():
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         start.record()
-        aspp_2(x2)
+        aspp_2(x3)
         end.record()
         torch.cuda.synchronize()
         if i >4999:
@@ -224,7 +224,7 @@ with torch.no_grad():
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         start.record()
-        aspp_3(x3)
+        aspp_3(x4)
         end.record()
         torch.cuda.synchronize()
         if i >4999:
