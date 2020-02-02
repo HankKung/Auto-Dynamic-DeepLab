@@ -65,7 +65,6 @@ class ASPP_train(nn.Module):
 
         x = self.conv1(x)
         x = self.bn1(x)
-        x = self.relu(x)
         return x
 
     def _init_weight(self):

@@ -180,7 +180,8 @@ class Model_1 (nn.Module):
             elif i == 1:
                 _cell = Cell(BatchNorm,
                             B,
-                            128, FB * fm[prev_level],
+                            128,
+                            FB * fm[prev_level],
                             self.cell_arch,
                             self.model_1_network[i],
                             F * fm[level],
@@ -250,9 +251,9 @@ class Model_1 (nn.Module):
 
             if i == self.low_level_layer:
                 low_level_feature = two_last_inputs[1]
-                
+
+            if i == 2:
                 x = two_last_inputs[1]
-            del feature_map
 
         if self.lr_aspp:
             y = self.aspp_1(x, low_level_feature)
@@ -375,7 +376,7 @@ class Model_2 (nn.Module):
             mult =1
 
         self.low_level_conv = nn.Sequential(
-                                    nn.ReLU()
+                                    nn.ReLU(),
                                     nn.Conv2d(F_1 * B_1 * 2**model_1_network[low_level_layer], 48, 1),
                                     BatchNorm(48),
                                     )

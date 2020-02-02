@@ -12,6 +12,7 @@ from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
+from utils.eval_utils import AverageMeter
 
 from modeling.baseline_model import *
 from modeling.dense_model import *
@@ -27,7 +28,6 @@ from ptflops import get_model_complexity_info
 class Evaluation(object):
     def __init__(self, args):
         self.args = args
-        self.writer = self.summary.create_summary()
 
         # Define Dataloader
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
@@ -96,7 +96,7 @@ class Evaluation(object):
             weight = None
 
         self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
-        self.model, self.optimizer = model, optimizer
+        self.model = model
 
         # Define Evaluator
         self.evaluator_1 = Evaluator(self.nclass)
@@ -158,27 +158,9 @@ class Evaluation(object):
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
 
-            """ *******************************************************************************"""
-            torch.cuda.synchronize()
-            tic = time.perf_counter()
-            """ *******************************************************************************"""
 
-            pred_1 = torch.argmax(pred_1, axis=1)
-
-            """ *******************************************************************************"""
-            torch.cuda.synchronize()
-            pred_1_meter.update(tic - time.perf_counter())
-            """ *******************************************************************************"""
-            torch.cuda.synchronize()
-            tic = time.perf_counter()
-            """ *******************************************************************************"""
-
-            pred_2 = torch.argmax(pred_2, axis=1)
-
-            """ *******************************************************************************"""
-            torch.cuda.synchronize()
-            pred_2_meter.update(tic - time.perf_counter())
-            """ *******************************************************************************"""
+            pred_1 = torch.argmax(output_1, axis=1)
+            pred_2 = torch.argmax(output_2, axis=1)
 
             target_show = target
 
@@ -186,7 +168,6 @@ class Evaluation(object):
             self.evaluator_1.add_batch(target, pred_1)
             self.evaluator_2.add_batch(target, pred_2)
 
-            self.summary.visualize_image(self.writer, self.args.dataset, image, target_show, output_1, i)
 
             if i < 9:
                 time_meter_1.update(time_1)
@@ -194,9 +175,6 @@ class Evaluation(object):
 
         mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
         mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
-
-        self.writer.add_scalar('val/1/mIoU', mIoU_1, 0)
-        self.writer.add_scalar('val/2/mIoU', mIoU_2, 0)
 
         print('Validation:')
         print("device_mIoU:{}, cloud_mIoU: {}".format(mIoU_1, mIoU_2))
@@ -213,7 +191,7 @@ class Evaluation(object):
 
 
 def main():
-    
+    parser = argparse.ArgumentParser(description="Eval")
     """ model setting """
     parser.add_argument('--network', type=str, default='searched_dense', choices=['searched_dense', 'searched_baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
@@ -275,7 +253,7 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     evaluation = Evaluation(args)
-
+    evaluation.mac()
     evaluation.validation()
     evaluation.writer.close()
 

@@ -2,6 +2,7 @@ import argparse
 import os
 import numpy as np
 from tqdm import tqdm
+import torch.nn as nn
 from torchviz import make_dot, make_dot_from_trace
 
 from mypath import Path
@@ -290,7 +291,8 @@ def main():
     parser = argparse.ArgumentParser(description="Dynamic DeepLab Training")
 
     """ model setting """
-    parser.add_argument('--network', type=str, default='searched_dense', choices=['searched_dense', 'searched_baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
+    parser.add_argument('--network', type=str, default='searched_dense', \
+        choices=['searched_dense', 'searched_baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
     parser.add_argument('--lr-aspp', type=bool, default=None)
     parser.add_argument('--F_2', type=int, default=20)
@@ -309,7 +311,6 @@ def main():
     parser.add_argument('--use-amp', type=bool, default=False)
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
     parser.add_argument('--sync-bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
-    parser.add_argument('--freeze-bn', type=bool, default=False, help='whether to freeze bn parameters (default: False)')
     parser.add_argument('--epochs', type=int, default=None, metavar='N')
     parser.add_argument('--start_epoch', type=int, default=0)
     parser.add_argument('--batch-size', type=int, default=None, metavar='N')
