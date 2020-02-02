@@ -57,7 +57,7 @@ def main():
         torch.manual_seed(1234)
 
     # set cudnn backend to benchmark config
-    cudnn.benchmark = True
+    
     
     # instantiate the models
     resnet18 = models.resnet18()

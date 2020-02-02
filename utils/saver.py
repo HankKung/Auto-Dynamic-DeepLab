@@ -46,7 +46,8 @@ class Saver(object):
         log_file = open(logfile, 'w')
         p = OrderedDict()
         p['network'] = self.args.network
-        p['lr-aspp'] = self.args.lr_aspp
+        if self.args.network != 'supernet':
+            p['lr-aspp'] = self.args.lr_aspp
         p['datset'] = self.args.dataset
         p['lr'] = self.args.lr
         p['lr_scheduler'] = self.args.lr_scheduler
