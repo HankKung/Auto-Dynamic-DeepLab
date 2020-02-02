@@ -4,6 +4,7 @@ import numpy as np
 from tqdm import tqdm
 import sys
 import torch
+import torch.nn as nn
 from collections import OrderedDict
 from mypath import Path
 from dataloaders import make_data_loader
@@ -67,9 +68,15 @@ class Trainer(object):
             weight = None
 
         self.criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255).cuda()
+
         """ Define network """
-        model = Model_search (num_classes=self.nclass, num_layers=12, F=self.args.F,
-                             B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
+        if self.args.network == 'supernet':
+            model = Model_search(num_classes=self.nclass, num_layers=12, F=self.args.F,
+                                B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
+        else:
+            model = Model_search_baseline(num_classes=self.nclass, num_layers=12, F=self.args.F,
+                                        B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
+
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
                 args.lr,
@@ -158,6 +165,7 @@ class Trainer(object):
         search_loss = 0.0
         latency_loss = 0.0
         self.model.train()
+        self.model.is_train()
         tbar = tqdm(self.train_loaderA)
         num_img_tr = len(self.train_loaderA)
         for i, sample in enumerate(tbar):
@@ -166,10 +174,10 @@ class Trainer(object):
                 image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            output_1, output_2, lat = self.model(image)
+            output_1, output_2, _ = self.model(image)
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
-            loss = (loss_1 + loss_2)/2 + self.args.lat_rate * lat
+            loss = (loss_1 + loss_2)/2 
 
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -191,20 +199,22 @@ class Trainer(object):
                 arch_loss_1 = self.criterion(output_search_1, target_search)
                 arch_loss_2 = self.criterion(output_search_2, target_search)
                 arch_loss = (arch_loss_1 + arch_loss_2)/2 + self.args.lat_rate * lat
-                search_loss += arch_loss.item()
-                latency_loss += self.args.lat_rate * lat
+                
                 if self.use_amp:
                     with amp.scale_loss(arch_loss, self.architect_optimizer) as arch_scaled_loss:
                        arch_scaled_loss.backward()
                 else:
                     arch_loss.backward()
                 self.architect_optimizer.step()
-
+                search_loss += arch_loss.item()
+                latency_loss += (self.args.lat_rate * lat).item()
+                
                 if epoch >= self.args.epochs-5:
                     if i !=0 and i % 20 == 0:
                         self.decoder_save(epoch, (i//20) -1)
 
             train_loss += loss.item()
+            
             tbar.set_description('Train loss: %.3f --Search loss: %.3f --Latency: %.3f' % (train_loss/(i+1), search_loss/(i+1), latency_loss/(i+1)))
 
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
@@ -214,6 +224,7 @@ class Trainer(object):
 
     def validation(self, epoch):
         self.model.eval()
+        self.model.is_train(False)
         self.evaluator_1.reset()
         self.evaluator_2.reset()
         tbar = tqdm(self.val_loader, desc='\r')
@@ -299,7 +310,7 @@ class Trainer(object):
     def pareto_eval(self):
         ex_dir_name = self.saver.experiment_dir
         pareto_optimal = []
-        self.model.eval_mode()
+        self.model.is_train(False)
         for epoch in range(self.args.epoch-5, self.args.epoch):
             for num in range(10):
                 if num == 9:
@@ -358,7 +369,7 @@ def main():
     parser = argparse.ArgumentParser(description="The Search")
 
     """ Search Network """
-    parser.add_argument('--network', type=str, default='supernet', choices=['searched_dense', 'searched_baseline', 'autodeeplab', 'supernet'])
+    parser.add_argument('--network', type=str, default='supernet', choices=['supernet'])
     parser.add_argument('--F', type=int, default=8)
     parser.add_argument('--B_2', type=int, default=5)
     parser.add_argument('--B_1', type=int, default=5)
@@ -392,7 +403,7 @@ def main():
     parser.add_argument('--weight-decay', type=float, default=5e-4, metavar='M', help='w-decay (default: 5e-4)')
     parser.add_argument('--arch-weight-decay', type=float, default=1e-3, metavar='M', help='w-decay (default: 5e-4)')
     parser.add_argument('--nesterov', action='store_true', default=False, help='whether use nesterov (default: False)')
-    parser.add_argument('--use_amp', action='store_true', default=False) 
+    parser.add_argument('--use-amp', action='store_true', default=False) 
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
     parser.add_argument('--lat-rate', type=float, default=0.001)
 

@@ -14,27 +14,27 @@ class MixedOp (nn.Module):
         eps=1e-5
         momentum=0.1
         latency_op_path = '../measure/latency_op.npy'
-        OPT_lat = np.load(latency_op_path, allow_pickle='TRUE').item()
+        OPS_lat = np.load(latency_op_path, allow_pickle='TRUE').item()
         self._ops = nn.ModuleList()
         self._ops_latency=[]
 
         for i, primitive in enumerate(PRIMITIVES):
             op = OPS[primitive](C, stride, BatchNorm, eps, momentum, False)
-            lat = OPS_lat[i][C]
+            lat = OPS_lat[i][C//8*20]
             if 'pool' in primitive:
                 op = nn.Sequential(op, BatchNorm(C, eps=eps, momentum=momentum, affine=False))
             self._ops.append(op)
             self._ops_latency.append(lat)
 
-    def forward(self, x, weights, train=True):
-        if train:
+    def forward(self, x, weights, training=True):
+        if training:
             return sum(w * op(x) for w, op in zip(weights, self._ops))
         else:
             w = torch.argmax(weights)
             return  self._ops[w](x)
 
-    def latency(self, weights, train=True):
-        if train:
+    def latency(self, weights, training=True):
+        if training:
             return sum(w * lat for w, lat in zip(weights, self._ops_latency))
         else:
             w = torch.argmax(weights)
@@ -51,12 +51,11 @@ class Cell(nn.Module):
                 prev_C_up,
                 C_out,
                 BatchNorm=nn.BatchNorm2d,
-                pre_preprocess_sample_rate=1,
-                train=True):
+                pre_preprocess_sample_rate=1):
 
         super(Cell, self).__init__()
 
-        self.train=train
+        self.train_mode = True
 
         if prev_C_down is not None:  
             self.preprocess_down = FactorizedReduce(
@@ -156,14 +155,14 @@ class Cell(nn.Module):
                     branch_index = offset + j
                     if self._ops[branch_index] is None:
                         continue
-                    if self.train:
+                    if self.train_mode:
                         new_state = self._ops[branch_index](
                             h, n_alphas[branch_index])
                         new_states.append(new_state)
                     else:
                         if 1 in n_alphas[branch_index]:
                             new_state = self._ops[branch_index](
-                                h, n_alphas[branch_index])
+                                h, n_alphas[branch_index], train_mode=False)
                             new_states.append(new_state)
 
                 s = sum(new_states)
@@ -191,26 +190,26 @@ class Cell(nn.Module):
         latency_list = []
         for states in all_states:
             offset = 0
-            for i in range(self._steps):
+            for i in range(self.B):
                 new_states = []
                 for j, _ in enumerate(states):
                     branch_index = offset + j
                     if self._ops[branch_index] is None:
                         continue
-                    if self.train:
+                    if self.train_mode:
                         new_state = self._ops[branch_index].latency(
                                     n_alphas[branch_index])
                         new_states.append(new_state)
                     else:
                         if 1 in n_alphas[branch_index]:
                             new_state = self._ops[branch_index].latency(
-                                n_alphas[branch_index], train=False)
+                                n_alphas[branch_index], train_mode=False)
                             new_states.append(new_state)
 
                 s = sum(new_states)
                 offset += len(states)
                 states.append(s)
-            total_latency = states[-self.B:] + states[1]
+            total_latency = sum(states[-self.B:]) + states[1]
             
             latency_list.append(total_latency)
         return latency_list

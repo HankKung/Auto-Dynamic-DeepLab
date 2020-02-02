@@ -265,7 +265,7 @@ class Model_search (nn.Module) :
         self._init_weight()
 
 
-    def forward (self, x, train=True, alphas_1=None, alphas_2=None, betas=None) :
+    def forward (self, x, training=True, alphas_1=None, alphas_2=None, betas=None) :
         level_4 = []
         level_8 = []
         level_16 = []
@@ -289,7 +289,7 @@ class Model_search (nn.Module) :
         normalized_betas = torch.randn(12, 4, 3).cuda().half()
 
         """ Softmax on alphas and betas """
-        if train:
+        if training:
             if torch.cuda.device_count() > 1:
                 img_device = torch.device('cuda', x.get_device())
                 normalized_alphas_1 = F.softmax(self.alphas_1.to(device=img_device), dim=-1)
@@ -344,10 +344,10 @@ class Model_search (nn.Module) :
 
             if layer == 0 :
                 level4_new, = self.cells[count] (temp, None, level_4[-1], None, normalized_alphas_1)
-                lat_4_new = self.cells[count].latency(None, self.lat_4[-1], None, normalized_alphas_1)
+                lat_4_new, = self.cells[count].latency(None, lat_4[-1], None, normalized_alphas_1)
                 count += 1
                 level8_new, = self.cells[count] (temp, level_4[-1], None, None, normalized_alphas_1)
-                lat_8_new = self.cells[count].latency(level_4[-1], None, None, normalized_alphas_1)
+                lat_8_new, = self.cells[count].latency(lat_4[-1], None, None, normalized_alphas_1)
                 count += 1
 
                 level4_new = normalized_betas[layer][0][1] * level4_new
@@ -376,7 +376,7 @@ class Model_search (nn.Module) :
                                                                     lat_8[-1],
                                                                     normalized_alphas_1)
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
-                lat_4_new = normalized_betas[layer][0][1] * lat4_new_1 + normalized_betas[layer][1][0] * lat_4_new_2
+                lat_4_new = normalized_betas[layer][0][1] * lat_4_new_1 + normalized_betas[layer][1][0] * lat_4_new_2
                 count += 1
 
 
@@ -429,7 +429,7 @@ class Model_search (nn.Module) :
                                                                 normalized_alphas_1)
                 lat_4_new_1, lat_4_new_2 = self.cells[count].latency(None,
                                                                     lat_4[-1],
-                                                                    lat_8[-1]
+                                                                    lat_8[-1],
                                                                     normalized_alphas_1)
                 count += 1
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
@@ -441,9 +441,9 @@ class Model_search (nn.Module) :
                                                                               level_8[-1],
                                                                               level_16[-1],
                                                                               normalized_alphas_1)
-                lat_8_new_1, lat_8_new_2, lat_8,new_3 = self.cells[count].latency(lat_4[-1],
+                lat_8_new_1, lat_8_new_2, lat_8_new_3 = self.cells[count].latency(lat_4[-1],
                                                                                 lat_8[-1],
-                                                                                lat_16[-1]
+                                                                                lat_16[-1],
                                                                                 normalized_alphas_1)
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
                 lat_8_new = normalized_betas[layer][0][2] * lat_8_new_1 + normalized_betas[layer][1][1] * lat_8_new_2 + normalized_betas[layer][2][0] * lat_8_new_3
@@ -501,7 +501,7 @@ class Model_search (nn.Module) :
                                                                 normalized_alphas_1)
                 lat_4_new_1, lat_4_new_2 = self.cells[count].latency(None,
                                                                 lat_4[-1],
-                                                                lat_8[-1]
+                                                                lat_8[-1],
                                                                 normalized_alphas_1)
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
                 lat_4_new = normalized_betas[layer][0][1] * lat_4_new_1 + normalized_betas[layer][1][0] * lat_4_new_2
@@ -572,7 +572,7 @@ class Model_search (nn.Module) :
                                                                 normalized_alphas_1)
                 lat_4_new_1, lat_4_new_2 = self.cells[count].latency(None,
                                                                 lat_4[-1],
-                                                                lat_8[-1]
+                                                                lat_8[-1],
                                                                 normalized_alphas_1)
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
                 lat_4_new = normalized_betas[layer][0][1] * lat_4_new_1 + normalized_betas[layer][1][0] * lat_4_new_2
@@ -642,7 +642,7 @@ class Model_search (nn.Module) :
                                                                 normalized_alphas_1)
                 lat_4_new_1, lat_4_new_2 = self.cells[count].latency(None,
                                                                 lat_4[-1],
-                                                                lat_8[-1]
+                                                                lat_8[-1],
                                                                 normalized_alphas_1)
                 level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
                 lat_4_new = normalized_betas[layer][0][1] * lat_4_new_1 + normalized_betas[layer][1][0] * lat_4_new_2
@@ -983,9 +983,13 @@ class Model_search (nn.Module) :
     def weight_parameters(self):
         return [param for name, param in self.named_parameters() if name not in self._arch_param_names]
 
-    def eval_mode(self):
-        for cell in self.cells:
-            cell.train = False
+    def is_train(self, train=True):
+        if train:
+            for cell in self.cells:
+                cell.train_mode = True
+        else:
+            for cell in self.cells:
+                cell.train_mode = False
 
 
 def main () :
