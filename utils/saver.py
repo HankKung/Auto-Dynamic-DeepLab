@@ -52,6 +52,7 @@ class Saver(object):
         p['lr'] = self.args.lr
         p['lr_scheduler'] = self.args.lr_scheduler
         p['epoch'] = self.args.epochs
+        p['--skip_con'] = self.args.skip_con
 
 
         for key, val in p.items():

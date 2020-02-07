@@ -95,7 +95,7 @@ class Evaluation(object):
         else:
             weight = None
 
-        self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
+        self.criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255).cuda()
         self.model = model
 
         # Define Evaluator
@@ -153,7 +153,8 @@ class Evaluation(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output_1, output_2, time_1, time_2 = self.model(image, evaluation=True)
+                # output_1, output_2, time_1, time_2 = self.model(image, evaluation=True)
+                output_1, output_2 = self.model(image)
 
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
@@ -162,24 +163,23 @@ class Evaluation(object):
             pred_1 = torch.argmax(output_1, axis=1)
             pred_2 = torch.argmax(output_2, axis=1)
 
-            target_show = target
 
             # Add batch sample into evaluator
             self.evaluator_1.add_batch(target, pred_1)
             self.evaluator_2.add_batch(target, pred_2)
 
 
-            if i < 9:
-                time_meter_1.update(time_1)
-                time_meter_2.update(time_2)
+            # if i < 9:
+            #     time_meter_1.update(time_1)
+            #     time_meter_2.update(time_2)
 
         mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
         mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
 
         print('Validation:')
-        print("device_mIoU:{}, cloud_mIoU: {}".format(mIoU_1, mIoU_2))
-        print("device_inference_time:{}, cloud_inference_time: {}".format(time_meter_1.average(), time_meter_2.average()))
-        print("device_pred_time:{}, cloud_pred_time: {}".format(pred_1_meter.average(), pred_2_meter.average()))
+        print("mIoU_1:{}, mIoU_2: {}".format(mIoU_1, mIoU_2))
+        # print("device_inference_time:{}, cloud_inference_time: {}".format(time_meter_1.average(), time_meter_2.average()))
+        # print("device_pred_time:{}, cloud_pred_time: {}".format(pred_1_meter.average(), pred_2_meter.average()))
 
 
     def mac(self):
@@ -200,7 +200,6 @@ def main():
     parser.add_argument('--F_1', type=int, default=20)
     parser.add_argument('--B_2', type=int, default=5)
     parser.add_argument('--B_1', type=int, default=5)
-    parser.add_argument('--skip_con', type=bool, default=True)
 
 
     """ dataset config"""
@@ -213,9 +212,7 @@ def main():
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'])
     parser.add_argument('--sync-bn', type=bool, default=None)
     parser.add_argument('--freeze-bn', type=bool, default=False)
-    parser.add_argument('--loss-type', type=str, default='ce',
-                        choices=['ce', 'focal'],
-                        help='loss func type (default: ce)')
+
     parser.add_argument('--batch-size', type=int, default=1, metavar='N')
     parser.add_argument('--test-batch-size', type=int, default=1, metavar='N')
     parser.add_argument('--use-balanced-weights', action='store_true', default=False)
@@ -253,7 +250,7 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     evaluation = Evaluation(args)
-    evaluation.mac()
+    # evaluation.mac()
     evaluation.validation()
     evaluation.writer.close()
 
