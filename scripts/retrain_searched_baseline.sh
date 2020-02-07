@@ -6,7 +6,7 @@ CUDA_VISIBLE_DEVICES=0,1 python ../train.py \
  --workers 8 \
  --epoch 2150 \
  --use-balanced-weights \
- --use-amp True \
+ --use-amp \
  --opt-level O1 \
  --lr 0.05 \
  --nesterov \
