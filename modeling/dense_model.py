@@ -26,8 +26,8 @@ class Cell(nn.Module):
                 dense_out=True):
 
         super(Cell, self).__init__()
-        eps = 1e-5
-        momentum = 0.1
+        eps = 1e-3
+        momentum = 3e-4
 
         self.cell_arch = cell_arch
         self.downup_sample = downup_sample
@@ -141,21 +141,24 @@ class Model_1 (nn.Module):
         FB = F * B
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
 
+        eps = 1e-3
+        momentum = 3e-4
+
         self.stem0 = nn.Sequential(
             nn.Conv2d(3, 64, 3, stride=2, padding=1),
-            BatchNorm(64),
+            BatchNorm(64, eps=eps, momentum=momentum),
             nn.ReLU()
         )
 
         self.stem1 = nn.Sequential(
             nn.Conv2d(64, 64, 3, padding=1),
-            BatchNorm(64),
+            BatchNorm(64, eps=eps, momentum=momentum),
         )
 
         self.stem2 = nn.Sequential(
             nn.ReLU(),
             nn.Conv2d(64, 128, 3, stride=2, padding=1),
-            BatchNorm(128)
+            BatchNorm(128, eps=eps, momentum=momentum)
         )
 
 
@@ -224,7 +227,7 @@ class Model_1 (nn.Module):
             self.low_level_conv = nn.Sequential(
                                     nn.ReLU(),
                                     nn.Conv2d(FB * 2** self.model_1_network[low_level_layer], 48, 1),
-                                    BatchNorm(48),
+                                    BatchNorm(48, eps=eps, momentum=momentum),
                                     )
             self.decoder_1 = Decoder(num_classes, BatchNorm)
 
@@ -254,6 +257,7 @@ class Model_1 (nn.Module):
 
             if i == 2:
                 x = two_last_inputs[1]
+                del stem, stem0, stem1, two_last_inputs
 
         if self.lr_aspp:
             y = self.aspp_1(x, low_level_feature)
@@ -293,6 +297,9 @@ class Model_2 (nn.Module):
         F_1 = args.F_1
         B_2 = args.B_2
         B_1 = args.B_1
+
+        eps = 1e-3
+        momentum = 3e-4
 
         self.args = args
         num_model_1_layers = args.num_model_1_layers
@@ -378,7 +385,7 @@ class Model_2 (nn.Module):
         self.low_level_conv = nn.Sequential(
                                     nn.ReLU(),
                                     nn.Conv2d(F_1 * B_1 * 2**model_1_network[low_level_layer], 48, 1),
-                                    BatchNorm(48),
+                                    BatchNorm(48, eps=eps, momentum=momentum),
                                     )
         self.aspp_2 = ASPP_train(F_2 * B_2 * fm[self.model_2_network[-1]], 
                                      256, num_classes, BatchNorm, mult=mult)
@@ -406,10 +413,7 @@ class Model_2 (nn.Module):
             x = self.decoder_2(x, low_level, size)     
             del low_level    
 
-            if self.args.skip_con:
-                return y1, x+y1
-            else: 
-                return y1, x
+            return y1, x
 
         else:
             torch.cuda.synchronize()
@@ -437,10 +441,7 @@ class Model_2 (nn.Module):
             torch.cuda.synchronize()
             tic_2 = time.perf_counter()
 
-            if self.args.skip_con:
-                return y1, x+y1, tic_1 - tic, tic_2 - tic
-            else:
-                return y1. x, tic_1 - tic, tic_2 - tic
+            return y1. x, tic_1 - tic, tic_2 - tic
 
 
     def _init_weight(self):

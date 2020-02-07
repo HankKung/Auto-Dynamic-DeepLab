@@ -6,7 +6,7 @@ from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.operations import ReLUConvBN
 
 class ASPP_train(nn.Module):
-    def __init__(self, C, depth, num_classes, BatchNorm, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1):
+    def __init__(self, C, depth, num_classes, BatchNorm, conv=nn.Conv2d, eps=1e-5, momentum=3e-4, mult=1):
         super(ASPP_train, self).__init__()
         self._C = C
         self._depth = depth
@@ -26,14 +26,14 @@ class ASPP_train(nn.Module):
                                dilation=int(18*mult), padding=int(18*mult),
                                bias=False)
         self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
-        self.aspp1_bn = BatchNorm(depth)
-        self.aspp2_bn = BatchNorm(depth)
-        self.aspp3_bn = BatchNorm(depth)
-        self.aspp4_bn = BatchNorm(depth)
-        self.aspp5_bn = BatchNorm(depth)
+        self.aspp1_bn = BatchNorm(depth, eps=eps, momentum=momentum)
+        self.aspp2_bn = BatchNorm(depth, eps=eps, momentum=momentum)
+        self.aspp3_bn = BatchNorm(depth, eps=eps, momentum=momentum)
+        self.aspp4_bn = BatchNorm(depth, eps=eps, momentum=momentum)
+        self.aspp5_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.conv1 = conv(depth * 5, depth, kernel_size=1, stride=1,
                                bias=False)
-        self.bn1 = BatchNorm(depth)
+        self.bn1 = BatchNorm(depth, eps=eps, momentum=momentum)
         self._init_weight()
 
     def forward(self, x):

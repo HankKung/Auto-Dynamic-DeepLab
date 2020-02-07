@@ -55,7 +55,6 @@ class Trainer(object):
 
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last':True, 'drop_last': True}
         self.train_loaderA, self.train_loaderB, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
-
         if args.use_balanced_weights:
             classes_weights_path = os.path.join(Path.db_root_dir(args.dataset), args.dataset+'_classes_weights.npy')
             if os.path.isfile(classes_weights_path):
@@ -154,7 +153,7 @@ class Trainer(object):
                 copy_state_dict(self.model.state_dict(), new_state_dict)
 
             else:
-                if (torch.cuda.device_count() > 1 or args.load_parallel):
+                if (torch.cuda.device_count() > 1):
                     copy_state_dict(self.model.module.state_dict(), checkpoint['state_dict'])
                 else:
                     copy_state_dict(self.model.state_dict(), checkpoint['state_dict'])
@@ -174,10 +173,10 @@ class Trainer(object):
                 image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            output_1, output_2, _ = self.model(image)
+            output_1, output_2 = self.model(image)
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
-            loss = (loss_1 + loss_2)/2 
+            loss = loss_1 + loss_2
 
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -194,28 +193,26 @@ class Trainer(object):
                     image_search, target_search = image_search.cuda(), target_search.cuda()
 
                 self.architect_optimizer.zero_grad()
-                output_search_1, output_search_2, lat = self.model(image_search)
+                output_search_1, output_search_2 = self.model(image_search)
 
                 arch_loss_1 = self.criterion(output_search_1, target_search)
                 arch_loss_2 = self.criterion(output_search_2, target_search)
-                arch_loss = (arch_loss_1 + arch_loss_2)/2 + self.args.lat_rate * lat
+                arch_loss = arch_loss_1 + arch_loss_2 + self.args.lat_rate * lat
                 
                 if self.use_amp:
                     with amp.scale_loss(arch_loss, self.architect_optimizer) as arch_scaled_loss:
                        arch_scaled_loss.backward()
                 else:
                     arch_loss.backward()
+
                 self.architect_optimizer.step()
                 search_loss += arch_loss.item()
-                latency_loss += (self.args.lat_rate * lat).item()
                 
-                if epoch >= self.args.epochs-5:
-                    if i !=0 and i % 20 == 0:
-                        self.decoder_save(epoch, (i//20) -1)
 
             train_loss += loss.item()
             
-            tbar.set_description('Train loss: %.3f --Search loss: %.3f --Latency: %.3f' % (train_loss/(i+1), search_loss/(i+1), latency_loss/(i+1)))
+            tbar.set_description('Train loss: %.3f --Search loss: %.3f' \
+                % (train_loss/(i+1), search_loss/(i+1)))
 
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
@@ -224,21 +221,20 @@ class Trainer(object):
 
     def validation(self, epoch):
         self.model.eval()
-        self.model.is_train(False)
+        self.model.is_train()
         self.evaluator_1.reset()
         self.evaluator_2.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
-
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
-                output_1, output_2, lat = self.model(image)
+                output_1, output_2 = self.model(image)
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
-            loss = (loss_1 + loss_2)/2 + self.args.lat_rate * lat
+            loss = loss_1 + loss_2
             test_loss += loss.item()
 
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
@@ -249,7 +245,6 @@ class Trainer(object):
             """ Add batch sample into evaluator"""
             self.evaluator_1.add_batch(target, output_1)
             self.evaluator_2.add_batch(target, output_2)
-
         mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
         mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
 
@@ -277,10 +272,10 @@ class Trainer(object):
             }, is_best)
 
         """ decode the arch """
-        self.decoder_save(epoch)
+        self.decoder_save()
 
 
-    def decoder_save(self, epoch, num='val'):
+    def decoder_save(self, num='val'):
         decoder = Decoder(self.model.alphas_1,
                           self.model.alphas_2,
                           self.model.betas,
@@ -291,10 +286,12 @@ class Trainer(object):
         if type(num) == int:
             num = str(num)
         try:
-            dir_name = os.path.join(self.saver.experiment_dir, str(epoch), num)
-            os.mkdir(dir_name)
+            dir_name = os.path.join(self.saver.experiment_dir, 'candidate_' + num)
+            os.makedirs(dir_name)
         except:
             print('folder path error')
+
+        betas = self.model.betas.data.cpu().numpy()
 
         network_path_filename = os.path.join(dir_name,'network_path')
         genotype_filename_1 = os.path.join(dir_name, 'genotype_1')
@@ -304,66 +301,8 @@ class Trainer(object):
         np.save(network_path_filename, result_paths)
         np.save(genotype_filename_1, genotype_1)
         np.save(genotype_filename_2, genotype_2)
-        np.save(beta_filename, self.model.betas.numpy())
+        np.save(beta_filename, betas)
 
-
-    def pareto_eval(self):
-        ex_dir_name = self.saver.experiment_dir
-        pareto_optimal = []
-        self.model.is_train(False)
-        for epoch in range(self.args.epoch-5, self.args.epoch):
-            for num in range(10):
-                if num == 9:
-                    dir_name = os.path.join(ex_dir_name, str(epoch), "val")
-                else:
-                    dir_name = os.path.join(ex_dir_name, str(epoch), str(i))
-
-                self.model.eval()
-                self.evaluator_1.reset()
-                self.evaluator_2.reset()
-                tbar = tqdm(self.val_loader, desc='\r')
-
-                alphas_1 = np.load(os.path.join(dir_name,'genotype_1'))
-                alphas_2 = np.load(os.path.join(dir_name,'genotype_2'))
-                betas = np.load(os.path.join(dir_name,'betas'))
-
-                alphas_1 = encoding_alphas(alphas_1)
-                alphas_2 = encoding_alphas(alphas_2)
-                betas = encoding_betas(betas)
-
-                for i, sample in enumerate(tbar):
-                    image, target = sample['image'], sample['label']
-                    if self.args.cuda:
-                        image, target = image.cuda(), target.cuda()
-                    with torch.no_grad():
-                        output_1, output_2, lat = self.model(image, train=False, alphas_1=alphas_1, alphas_2=alphas_2, betas=betas)
-
-                    output_1 = torch.argmax(output_1, axis=1)
-                    output_2 = torch.argmax(output_2, axis=1)
-
-                    """ Add batch sample into evaluator"""
-                    self.evaluator_1.add_batch(target, output_1)
-                    self.evaluator_2.add_batch(target, output_2)
-
-                mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
-                mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
-                mIoU_mean = (mIoU_1 + mIoU_2)/2
-                lat = lat.item()
-                optimal = True
-                for candidate in pareto_optimal:
-                    if candidate[0]: 
-                        if mIoU_mean > candidate[1] and lat < candidate[2]:
-                            candidate[0] = False
-                        elif mIoU_mean < candidate[1] and lat > candidate[2]:
-                            optimal = False
-                result = [optimal, mIoU_mean, lat, dir_name]
-                pareto_optimal.append(result)
-                print(str(result[0]) + '\t' + str(result[1]) + '\t' + str(result[2]) + '\t' + result[3])
-
-        with open(os.path.join(self.ex_dir_name, 'pareto_optimal.txt'), 'w') as f:
-            for candidate in pareto_optimal:
-                f.write(str(candidate[0]) + '\t' + str(candidate[1]) + '\t' + str(candidate[2]) + '\t' + candidate[3])
-        
 
 def main():
     parser = argparse.ArgumentParser(description="The Search")
@@ -373,7 +312,6 @@ def main():
     parser.add_argument('--F', type=int, default=8)
     parser.add_argument('--B_2', type=int, default=5)
     parser.add_argument('--B_1', type=int, default=5)
-    parser.add_argument('--skip_con', type=bool, default=True)
 
 
     """ Training Setting """
@@ -451,11 +389,10 @@ def main():
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
         if epoch >= trainer.args.epochs - 5 and not trainer.args.no_val \
-        and epoch % args.eval_interval == (args.eval_interval - 1) or epoch == args.alpha_epoch:
+        and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
 
     trainer.writer.close()
-    trainer.pareto_eval()
 
 if __name__ == "__main__":
    main()

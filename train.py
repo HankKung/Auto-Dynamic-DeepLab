@@ -209,7 +209,7 @@ class trainNew(object):
             output_1, output_2 = self.model(image)
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
-            loss = (loss_1 + loss_2)/2
+            loss = loss_1 + loss_2
             
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -248,7 +248,7 @@ class trainNew(object):
                 output_1, output_2 = self.model(image)
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
-            loss = (loss_1 + loss_2) /2
+            loss = loss_1 + loss_2
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
 
@@ -292,15 +292,14 @@ def main():
 
     """ model setting """
     parser.add_argument('--network', type=str, default='searched_dense', \
-        choices=['searched_dense', 'searched_baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
+        choices=['searched_dense', 'searched_baseline', \
+        'autodeeplab-baseline', 'autodeeplab-dense', 'autodeeplab', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
     parser.add_argument('--lr-aspp', type=bool, default=None)
     parser.add_argument('--F_2', type=int, default=20)
     parser.add_argument('--F_1', type=int, default=20)
     parser.add_argument('--B_2', type=int, default=5)
     parser.add_argument('--B_1', type=int, default=5)
-    parser.add_argument('--skip_con', type=bool, default=True)
-
 
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes', choices=['pascal', 'coco', 'cityscapes'], help='dataset name (default: pascal)')
