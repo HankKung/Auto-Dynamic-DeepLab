@@ -162,7 +162,6 @@ class Trainer(object):
     def training(self, epoch):
         train_loss = 0.0
         search_loss = 0.0
-        latency_loss = 0.0
         self.model.train()
         self.model.is_train()
         tbar = tqdm(self.train_loaderA)
@@ -170,7 +169,7 @@ class Trainer(object):
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
-                image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
+                image, target = image.cuda(), target.cuda()
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             output_1, output_2 = self.model(image)
@@ -197,7 +196,7 @@ class Trainer(object):
 
                 arch_loss_1 = self.criterion(output_search_1, target_search)
                 arch_loss_2 = self.criterion(output_search_2, target_search)
-                arch_loss = arch_loss_1 + arch_loss_2 + self.args.lat_rate * lat
+                arch_loss = arch_loss_1 + arch_loss_2
                 
                 if self.use_amp:
                     with amp.scale_loss(arch_loss, self.architect_optimizer) as arch_scaled_loss:
@@ -343,7 +342,6 @@ def main():
     parser.add_argument('--nesterov', action='store_true', default=False, help='whether use nesterov (default: False)')
     parser.add_argument('--use-amp', action='store_true', default=False) 
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
-    parser.add_argument('--lat-rate', type=float, default=0.001)
 
 
     """ cuda, seed and logging """

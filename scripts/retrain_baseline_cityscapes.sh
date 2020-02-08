@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=0,1,2,3 python ../train.py \
+CUDA_VISIBLE_DEVICES=0 python ../train.py \
  --checkname autodeeplab-baseline \
  --network autodeeplab-baseline \
  --dataset cityscapes \
@@ -10,5 +10,5 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python ../train.py \
  --opt-level O1 \
  --lr 0.05 \
  --nesterov \
- --gpu-ids 0,1,2,3 \
+ --gpu-ids 0 \
  --saved-arch-path ../searched_arch

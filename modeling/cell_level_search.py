@@ -13,14 +13,10 @@ class MixedOp (nn.Module):
         super(MixedOp, self).__init__()
         eps=1e-5
         momentum=0.1
-        latency_op_path = '../measure/latency_op.npy'
-        OPS_lat = np.load(latency_op_path, allow_pickle='TRUE').item()
         self._ops = nn.ModuleList()
-        self._ops_latency=[]
 
         for i, primitive in enumerate(PRIMITIVES):
             op = OPS[primitive](C, stride, BatchNorm, eps, momentum, False)
-            lat = OPS_lat[i][C//8*20]
             if 'pool' in primitive:
                 op = nn.Sequential(op, BatchNorm(C, eps=eps, momentum=momentum, affine=False))
             self._ops.append(op)
@@ -32,13 +28,6 @@ class MixedOp (nn.Module):
         else:
             w = torch.argmax(weights)
             return  self._ops[w](x)
-
-    def latency(self, weights, training=True):
-        if training:
-            return sum(w * lat for w, lat in zip(weights, self._ops_latency))
-        else:
-            w = torch.argmax(weights)
-            return self._ops_latency[w] 
 
             
 class Cell(nn.Module):
@@ -54,8 +43,6 @@ class Cell(nn.Module):
                 pre_preprocess_sample_rate=1):
 
         super(Cell, self).__init__()
-
-        self.train_mode = True
 
         if prev_C_down is not None:  
             self.preprocess_down = FactorizedReduce(
@@ -155,15 +142,9 @@ class Cell(nn.Module):
                     branch_index = offset + j
                     if self._ops[branch_index] is None:
                         continue
-                    if self.train_mode:
-                        new_state = self._ops[branch_index](
-                            h, n_alphas[branch_index])
-                        new_states.append(new_state)
-                    else:
-                        if 1 in n_alphas[branch_index]:
-                            new_state = self._ops[branch_index](
-                                h, n_alphas[branch_index], train_mode=False)
-                            new_states.append(new_state)
+                    new_state = self._ops[branch_index](
+                        h, n_alphas[branch_index])
+                    new_states.append(new_state)
 
                 s = sum(new_states)
                 offset += len(states)
@@ -171,45 +152,5 @@ class Cell(nn.Module):
 
             concat_feature = torch.cat(states[-self.B:], dim=1)
             final_concates.append(concat_feature)
+
         return final_concates
-
-
-    def latency(self, s1_down, s1_same, s1_up, n_alphas):
-        all_states = []
-
-        if s1_down is not None:
-            states_down = [0, s1_down]
-            all_states.append(states_down)
-        if s1_same is not None:
-            states_same = [0, s1_same]
-            all_states.append(states_same)
-        if s1_up is not None:
-            states_up = [0, s1_up]
-            all_states.append(states_up)
-
-        latency_list = []
-        for states in all_states:
-            offset = 0
-            for i in range(self.B):
-                new_states = []
-                for j, _ in enumerate(states):
-                    branch_index = offset + j
-                    if self._ops[branch_index] is None:
-                        continue
-                    if self.train_mode:
-                        new_state = self._ops[branch_index].latency(
-                                    n_alphas[branch_index])
-                        new_states.append(new_state)
-                    else:
-                        if 1 in n_alphas[branch_index]:
-                            new_state = self._ops[branch_index].latency(
-                                n_alphas[branch_index], train_mode=False)
-                            new_states.append(new_state)
-
-                s = sum(new_states)
-                offset += len(states)
-                states.append(s)
-            total_latency = sum(states[-self.B:]) + states[1]
-            
-            latency_list.append(total_latency)
-        return latency_list

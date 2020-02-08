@@ -23,7 +23,6 @@ from modeling.sync_batchnorm.replicate import patch_replication_callback
 
 from apex import amp
     
-
 torch.backends.cudnn.benchmark = True
 
 class trainNew(object):
@@ -221,12 +220,6 @@ class trainNew(object):
             train_loss += loss.item()
             if i % 50 == 0:
                 tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
-
-            del loss_1
-            del loss_2
-            del loss
-            del output_1
-            del output_2
             
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))

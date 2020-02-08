@@ -35,33 +35,6 @@ class Model_search (nn.Module) :
         FB1 = F * B_1
         FB2 = F * B_2
 
-        self.dense_preprocess = nn.ModuleList()
-        for i in range(self._num_layers-2):
-            if i == 0:
-                self.dense_preprocess.append(nn.ModuleList())
-                self.dense_preprocess[0].append(ReLUConvBN(FB1, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[0].append(ReLUConvBN(FB1 * 2, F * 2, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[0].append(FactorizedReduce(FB1 * 2, F * 4, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[0].append(DoubleFactorizedReduce(FB1 * 2, F * 8, BatchNorm=BatchNorm, affine=False))
-            elif i == 1:
-                self.dense_preprocess.append(nn.ModuleList())
-                self.dense_preprocess[1].append(ReLUConvBN(FB1, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[1].append(ReLUConvBN(FB1 * 2, F * 2, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[1].append(ReLUConvBN(FB1 * 4, F * 4, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[1].append(FactorizedReduce(FB1 * 4, F * 8, BatchNorm=BatchNorm, affine=False))
-            elif i <= self.exit_layer:
-                self.dense_preprocess.append(nn.ModuleList())
-                self.dense_preprocess[i].append(ReLUConvBN(FB1, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 2, F * 2, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 4, F * 4, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB1 * 8, F * 8, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-            else:
-                self.dense_preprocess.append(nn.ModuleList())
-                self.dense_preprocess[i].append(ReLUConvBN(FB2, F, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 2, F * 2, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 4, F * 4, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-                self.dense_preprocess[i].append(ReLUConvBN(FB2 * 8, F * 8, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
-
         self.stem0 = nn.Sequential(
             nn.Conv2d(3, half_f_initial, 3, stride=2, padding=1),
             BatchNorm(half_f_initial),
@@ -124,20 +97,20 @@ class Model_search (nn.Module) :
                 self.cells += [cell4]
 
             elif i == 3 :
-                cell1 = cell (B_1, F * (i-1),
+                cell1 = cell (B_1, FB1,
                               None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_1, F * (i-1) * 2,
+                cell2 = cell (B_1, FB1 * 2,
                               FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_1, F * (i-1) * 4,
+                cell3 = cell (B_1, FB1 * 4,
                               FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
 
-                cell4 = cell (B_1, F * (i-1) * 8,
+                cell4 = cell (B_1, FB1 * 8,
                               FB1 * 4, FB1 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
@@ -147,19 +120,19 @@ class Model_search (nn.Module) :
                 self.cells += [cell4]
 
             elif i < exit_layer :
-                cell1 = cell (B_1, F * (i-1),
+                cell1 = cell (B_1, FB1,
                               None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_1, F * (i-1) * 2,
+                cell2 = cell (B_1, FB1 * 2,
                               FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_1, F * (i-1) * 4,
+                cell3 = cell (B_1, FB1 * 4,
                               FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (B_1, F * (i-1) * 8,
+                cell4 = cell (B_1, FB1 * 8,
                               FB1 * 4, FB1 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
@@ -169,19 +142,19 @@ class Model_search (nn.Module) :
                 self.cells += [cell4]
 
             elif i == exit_layer:
-                cell1 = cell (B_1, F * (i-1),
+                cell1 = cell (B_1, FB1,
                               None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_1, F * (i-1) * 2,
+                cell2 = cell (B_1, FB1 * 2,
                               FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_1, F * (i-1) * 4,
+                cell3 = cell (B_1, FB1 * 4,
                               FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (B_1, F * (i-1) * 8,
+                cell4 = cell (B_1, FB1 * 8,
                               FB1 * 4, FB1 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
@@ -191,19 +164,19 @@ class Model_search (nn.Module) :
                 self.cells += [cell4]
 
             elif i == exit_layer+1:
-                cell1 = cell (B_2, F * (i-1),
+                cell1 = cell (B_2, FB1,
                               None, FB1, FB1 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_2, F * (i-1) * 2,
+                cell2 = cell (B_2, FB1 * 2,
                               FB1, FB1 * 2, FB1 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_2, F * (i-1) * 4,
+                cell3 = cell (B_2, FB1 * 4,
                               FB1 * 2, FB1 * 4, FB1 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (B_2, F * (i-1) * 8,
+                cell4 = cell (B_2, FB1 * 8,
                               FB1 * 4, FB1 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
@@ -213,19 +186,19 @@ class Model_search (nn.Module) :
                 self.cells += [cell4]
 
             else:
-                cell1 = cell (B_2, F * (i-1),
+                cell1 = cell (B_2, FB2,
                               None, FB2, FB2 * 2,
                               F, BatchNorm=BatchNorm)
 
-                cell2 = cell (B_2, F * (i-1) * 2,
+                cell2 = cell (B_2, FB2 * 2,
                               FB2, FB2 * 2, FB2 * 4,
                               F * 2, BatchNorm=BatchNorm)
 
-                cell3 = cell (B_2, F * (i-1) * 4,
+                cell3 = cell (B_2, FB2 * 4,
                               FB2 * 2, FB2 * 4, FB2 * 8,
                               F * 4, BatchNorm=BatchNorm)
 
-                cell4 = cell (B_2, F * (i-1) * 8,
+                cell4 = cell (B_2, FB2 * 8,
                               FB2 * 4, FB2 * 8, None,
                               F * 8, BatchNorm=BatchNorm)
 
@@ -267,11 +240,6 @@ class Model_search (nn.Module) :
         level_8 = []
         level_16 = []
         level_32 = []
-
-        level_4_dense = []
-        level_8_dense = []
-        level_16_dense = []
-        level_32_dense = []
 
         temp = self.stem0 (x)
         level_4.append (self.stem1(temp))
@@ -318,10 +286,6 @@ class Model_search (nn.Module) :
                 level_8.append (level8_new)
 
                 del temp
-                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
-                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
-                level_16_dense.append(self.dense_preprocess[layer][2](level8_new))
-                level_32_dense.append(self.dense_preprocess[layer][3](level8_new))
                 
             elif layer == 1 :
                 level4_new_1, level4_new_2 = self.cells[count] (level_4[-2],
@@ -355,11 +319,6 @@ class Model_search (nn.Module) :
                 level_4.append (level4_new)
                 level_8.append (level8_new)
                 level_16.append (level16_new)
-
-                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
-                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
-                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
-                level_32_dense.append(self.dense_preprocess[layer][3](level16_new))
 
             elif layer == 2 :
                 level4_new_1, level4_new_2 = self.cells[count] (level_4[-2],
@@ -404,13 +363,8 @@ class Model_search (nn.Module) :
                 level_16.append (level16_new)
                 level_32.append (level32_new)
 
-                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
-                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
-                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
-                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
-
             elif layer == 3 :
-                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4[-2], dim=1),
                                                                 None,
                                                                 level_4[-1],
                                                                 level_8[-1],
@@ -420,7 +374,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8[-2], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
@@ -429,7 +383,7 @@ class Model_search (nn.Module) :
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
                 count += 1
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16[-2], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
@@ -439,7 +393,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32[-2], dim=1),
                                                                   level_16[-1],
                                                                   level_32[-1],
                                                                   None,
@@ -454,13 +408,9 @@ class Model_search (nn.Module) :
                 level_16.append (level16_new)
                 level_32.append (level32_new)
 
-                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
-                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
-                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
-                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
             elif layer < self.exit_layer :
-                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4[-2], dim=1),
                                                                 None,
                                                                 level_4[-1],
                                                                 level_8[-1],
@@ -470,7 +420,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8[-2], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
@@ -479,7 +429,7 @@ class Model_search (nn.Module) :
                 level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
                 count += 1
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16[-2], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
@@ -489,7 +439,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32[-2], dim=1),
                                                                   level_16[-1],
                                                                   level_32[-1],
                                                                   None,
@@ -502,14 +452,9 @@ class Model_search (nn.Module) :
                 level_8.append (level8_new)
                 level_16.append (level16_new)
                 level_32.append (level32_new)
-
-                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
-                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
-                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
-                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
             elif layer == self.exit_layer:
-                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4[-2], dim=1),
                                                                 None,
                                                                 level_4[-1],
                                                                 level_8[-1],
@@ -519,7 +464,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8[-2], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
@@ -529,7 +474,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16[-2], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
@@ -539,7 +484,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32[-2], dim=1),
                                                                   level_16[-1],
                                                                   level_32[-1],
                                                                   None,
@@ -553,12 +498,6 @@ class Model_search (nn.Module) :
                 level_8.append (level8_new)
                 level_16.append (level16_new)
                 level_32.append (level32_new)
-
-
-                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
-                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
-                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
-                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
                 # exit_1_4_new = self.aspp_exit_1_4(level_4[-1])
                 exit_1_8_new = self.aspp_exit_1_8(level_8[-1])
@@ -566,7 +505,7 @@ class Model_search (nn.Module) :
                 # exit_1_32_new = self.aspp_exit_1_32(level_32[-1])
 
             elif layer == self.exit_layer+1:
-                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4[-2], dim=1),
                                                                 None,
                                                                 level_4[-1],
                                                                 level_8[-1],
@@ -575,7 +514,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8[-2], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
@@ -584,7 +523,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16[-2], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
@@ -593,7 +532,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32[-2], dim=1),
                                                                   level_16[-1],
                                                                   level_32[-1],
                                                                   None,
@@ -606,14 +545,9 @@ class Model_search (nn.Module) :
                 level_8.append (level8_new)
                 level_16.append (level16_new)
                 level_32.append (level32_new)
-
-                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
-                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
-                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
-                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
             elif layer == self.exit_layer+2:
-                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4[-2], dim=1),
                                                                 None,
                                                                 level_4[-1],
                                                                 level_8[-1],
@@ -622,7 +556,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8[-2], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
@@ -631,7 +565,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16[-2], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
@@ -640,54 +574,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
-                                                                  level_16[-1],
-                                                                  level_32[-1],
-                                                                  None,
-                                                                  normalized_alphas_2)
-                level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
-                count += 1
-
-
-                level_4.append (level4_new)
-                level_8.append (level8_new)
-                level_16.append (level16_new)
-                level_32.append (level32_new)
-
-                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
-                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
-                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
-                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
-
-            elif layer == self._num_layers-1:
-                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense, dim=1),
-                                                                None,
-                                                                level_4[-1],
-                                                                level_8[-1],
-                                                                normalized_alphas_2)
-                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
-                count += 1
-
-
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense, dim=1),
-                                                                              level_4[-1],
-                                                                              level_8[-1],
-                                                                              level_16[-1],
-                                                                              normalized_alphas_2)
-                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
-                count += 1
-
-
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense, dim=1),
-                                                                                 level_8[-1],
-                                                                                 level_16[-1],
-                                                                                 level_32[-1],
-                                                                                 normalized_alphas_2)
-                level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
-                count += 1
-
-
-                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense, dim=1),
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32[-2], dim=1),
                                                                   level_16[-1],
                                                                   level_32[-1],
                                                                   None,
@@ -702,7 +589,7 @@ class Model_search (nn.Module) :
                 level_32.append (level32_new)
 
             else :
-                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
+                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4[-2], dim=1),
                                                                 None,
                                                                 level_4[-1],
                                                                 level_8[-1],
@@ -711,7 +598,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
+                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8[-2], dim=1),
                                                                               level_4[-1],
                                                                               level_8[-1],
                                                                               level_16[-1],
@@ -720,7 +607,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
+                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16[-2], dim=1),
                                                                                  level_8[-1],
                                                                                  level_16[-1],
                                                                                  level_32[-1],
@@ -729,7 +616,7 @@ class Model_search (nn.Module) :
                 count += 1
 
 
-                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
+                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32[-2], dim=1),
                                                                   level_16[-1],
                                                                   level_32[-1],
                                                                   None,
@@ -743,22 +630,11 @@ class Model_search (nn.Module) :
                 level_16.append (level16_new)
                 level_32.append (level32_new)
 
-                if layer < self._num_layers -2:
-                    level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
-                    level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
-                    level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
-                    level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
+            level_4 = level_4[-2:]
+            level_8 = level_8[-2:]
+            level_16 = level_16[-2:]
+            level_32 = level_32[-2:]
 
-            if layer < self.exit_layer:
-                level_4 = level_4[-2:]
-                level_8 = level_8[-2:]
-                level_16 = level_16[-2:]
-                evel_32 = level_32[-2:]
-            else:
-                level_4 = level_4[-1:]
-                level_8 = level_8[-1:]
-                evel_16 = level_16[-1:]
-                level_32 = level_32[-1:]
 
         # exit_2_4_new = self.aspp_exit_2_4 (level_4[-1])
         del level_4
