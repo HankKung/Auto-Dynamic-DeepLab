@@ -147,7 +147,7 @@ class Model_1 (nn.Module):
         self.stem0 = nn.Sequential(
             nn.Conv2d(3, 64, 3, stride=2, padding=1),
             BatchNorm(64, eps=eps, momentum=momentum),
-            nn.ReLU()
+            nn.ReLU(inplace=True)
         )
 
         self.stem1 = nn.Sequential(
@@ -156,7 +156,7 @@ class Model_1 (nn.Module):
         )
 
         self.stem2 = nn.Sequential(
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Conv2d(64, 128, 3, stride=2, padding=1),
             BatchNorm(128, eps=eps, momentum=momentum)
         )
