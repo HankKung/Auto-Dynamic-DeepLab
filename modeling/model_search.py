@@ -753,11 +753,11 @@ class Model_search (nn.Module) :
                 level_4 = level_4[-2:]
                 level_8 = level_8[-2:]
                 level_16 = level_16[-2:]
-                evel_32 = level_32[-2:]
+                level_32 = level_32[-2:]
             else:
                 level_4 = level_4[-1:]
                 level_8 = level_8[-1:]
-                evel_16 = level_16[-1:]
+                level_16 = level_16[-1:]
                 level_32 = level_32[-1:]
 
         # exit_2_4_new = self.aspp_exit_2_4 (level_4[-1])

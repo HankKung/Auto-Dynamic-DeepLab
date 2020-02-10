@@ -20,7 +20,6 @@ class MixedOp (nn.Module):
             if 'pool' in primitive:
                 op = nn.Sequential(op, BatchNorm(C, eps=eps, momentum=momentum, affine=False))
             self._ops.append(op)
-            self._ops_latency.append(lat)
 
     def forward(self, x, weights, training=True):
         if training:
