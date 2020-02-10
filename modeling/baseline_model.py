@@ -204,13 +204,57 @@ class Model_1_baseline (nn.Module):
             if i == self.low_level_layer:
                 low_level = two_last_inputs[1]
                 low_level_feature = self.low_level_conv(low_level)
-
         x = two_last_inputs[-1]
         x = self.aspp_1(x)
         x = self.decoder_1(x, low_level_feature, size)
 
-        return low_level, two_last_inputs, x
+        return low_level, two_last_inputs, x, pool_confidence
 
+
+    def forward_eval(self, x, entropy=False, confidence_mode=False, pool_threshold=False):
+        size = (x.shape[2], x.shape[3])
+        stem = self.stem0(x)
+        stem0 = self.stem1(stem)
+        stem1 = self.stem2(stem0)
+        two_last_inputs = (stem0, stem1)
+
+        for i in range(self.num_model_1_layers):       
+            two_last_inputs = self.cells[i](
+                two_last_inputs[0], two_last_inputs[1])
+
+            if i == self.low_level_layer:
+                low_level = two_last_inputs[1]
+                low_level_feature = self.low_level_conv(low_level)
+
+        x = two_last_inputs[-1]
+        if confidence_mode:
+            confidence = self.global_pooling(x, mode=confidence_mode)
+            if pool_threshold and pool_threshold > confidence:
+                return low_level, two_last_inputs, x, pool_confidence
+
+        x = self.aspp_1(x)
+        x = self.decoder_1(x, low_level_feature, size)
+
+        if entropy:
+            confidence = self.shannon_entropy(x)
+        if entropy or confidence_mode:
+            return low_level, two_last_inputs, x, confidence
+        else:
+            return low_level, two_last_inputs, x
+
+
+    def global_pooling(self, x, mode='avg'):
+        if mode == 'avg':
+            pool = AdaptiveMaxPool2d(1)
+        elif mode == 'max':
+            pool = nn.AdaptiveAvgPool2d(1)
+        x = pool(x)
+        x = torch.mean(x)
+        return x
+
+    def shannon_entropy(self, x):
+        x = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
+        x = -1.0 * x.sum()
 
 
     def _init_weight(self):
@@ -303,46 +347,71 @@ class Model_2_baseline (nn.Module):
         self._init_weight()
 
 
-    def forward(self, x, evaluation=False):
+    def forward(self, x):
         size = (x.shape[2], x.shape[3])
-        if not evaluation:
-            low_level, two_last_inputs, y1 = self.model_1(x)
+        low_level, two_last_inputs, y1, _ = self.model_1(x)
 
-            for i in range(self.num_model_2_layers):
-                two_last_inputs = self.cells[i](
-                    two_last_inputs[0], two_last_inputs[1])
-                
-            y2 = two_last_inputs[-1]
+        for i in range(self.num_model_2_layers):
+            two_last_inputs = self.cells[i](
+                two_last_inputs[0], two_last_inputs[1])
+            
+        y2 = two_last_inputs[-1]
 
-            y2 = self.aspp_2(y2)
-            low_level = self.low_level_conv(low_level)
-            y2 = self.decoder_2(y2, low_level, size)     
+        y2 = self.aspp_2(y2)
+        low_level = self.low_level_conv(low_level)
+        y2 = self.decoder_2(y2, low_level, size)     
 
-            return y1, y2
+        return y1, y2
 
+    def forward_eval(self, x, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
+        earlier_exit = False
 
-        else:
-            torch.cuda.synchronize()
-            tic = time.perf_counter()
+        low_level, two_last_inputs, y1, confidence = \
+        self.model_1.forward_eval(x, entropy=entropy, confidence_mode=confidence_mode,\
+        pool_threshold=pool_threshold, entropy_threshold=entropy_threshold)
 
-            low_level, two_last_inputs, y1 = self.device(x)
+        if confidence_mode and confidence > confidence:
+            earlier_exit = True
+            return y1, confidence, earlier_exit
+        elif entropy and entropy_threshold < confidence:
+            earlier_exit = True
+            return y1, confidence, earlier_exit
 
-            torch.cuda.synchronize()
-            tic_1 = time.perf_counter()
+        for i in range(self.num_model_2_layers):
+            two_last_inputs = self.cells[i](
+                two_last_inputs[0], two_last_inputs[1])
 
-            for i in range(self.num_model_2_layers):
-                two_last_inputs = self.cells[i](
-                    two_last_inputs[0], two_last_inputs[1])
+        y2 = two_last_inputs[-1]
+        y2 = self.aspp_2(y2)
+        low_level = self.low_level_conv(low_level)
+        y2 = self.decoder_2(y2, low_level, size)
 
-            y2 = two_last_inputs[-1]
-            y2 = self.aspp_2(y2)
-            low_level = self.low_level_conv(low_level)
-            y2 = self.decoder_2(y2, low_level, size)
+        return y2, earlier_exit, confidence 
 
-            torch.cuda.synchronize()
-            tic_2 = time.perf_counter()
+    def forward_time_eval(self, x):
+        torch.cuda.synchronize()
+        tic = time.perf_counter()
 
-            return y1, y2, tic_1 - tic, tic_2 - tic
+        low_level, two_last_inputs, y1, _ = self.model_1(x)
+
+        torch.cuda.synchronize()
+        tic_1 = time.perf_counter()
+
+        if confidence and confidence 
+
+        for i in range(self.num_model_2_layers):
+            two_last_inputs = self.cells[i](
+                two_last_inputs[0], two_last_inputs[1])
+
+        y2 = two_last_inputs[-1]
+        y2 = self.aspp_2(y2)
+        low_level = self.low_level_conv(low_level)
+        y2 = self.decoder_2(y2, low_level, size)
+
+        torch.cuda.synchronize()
+        tic_2 = time.perf_counter()
+
+        return y1, y2, tic_1 - tic, tic_2 - tic
 
     def _init_weight(self):
         for m in self.modules():

@@ -153,8 +153,7 @@ class Evaluation(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                # output_1, output_2, time_1, time_2 = self.model(image, evaluation=True)
-                output_1, output_2 = self.model(image)
+                output_1, output_2 = self.model_forward_time(image)
 
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
@@ -163,15 +162,9 @@ class Evaluation(object):
             pred_1 = torch.argmax(output_1, axis=1)
             pred_2 = torch.argmax(output_2, axis=1)
 
-
             # Add batch sample into evaluator
             self.evaluator_1.add_batch(target, pred_1)
             self.evaluator_2.add_batch(target, pred_2)
-
-
-            # if i < 9:
-            #     time_meter_1.update(time_1)
-            #     time_meter_2.update(time_2)
 
         mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
         mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
@@ -180,6 +173,33 @@ class Evaluation(object):
         print("mIoU_1:{}, mIoU_2: {}".format(mIoU_1, mIoU_2))
         # print("device_inference_time:{}, cloud_inference_time: {}".format(time_meter_1.average(), time_meter_2.average()))
         # print("device_pred_time:{}, cloud_pred_time: {}".format(pred_1_meter.average(), pred_2_meter.average()))
+
+    def dynamic_inference(self, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
+        self.model.eval()
+        self.evaluator_1.reset()
+        tbar = tqdm(self.val_loader, desc='\r')
+        test_loss = 0.0
+
+        for i, sample in enumerate(tbar):
+            image, target = sample['image'], sample['label']
+            if self.args.cuda:
+                image, target = image.cuda(), target.cuda()
+
+            with torch.no_grad():
+                output, earlier_exit, confidence = self.model.forward_eval(image)
+
+            loss = self.criterion(output, target)
+
+
+            pred = torch.argmax(output, axis=1)
+
+            # Add batch sample into evaluator
+            self.evaluator_1.add_batch(target, pred)
+
+        mIoU = self.evaluator_1.Mean_Intersection_over_Union()
+
+        print('Validation:')
+        print("mIoU_1:".format(mIoU_1))
 
 
     def mac(self):
@@ -200,6 +220,13 @@ def main():
     parser.add_argument('--F_1', type=int, default=20)
     parser.add_argument('--B_2', type=int, default=5)
     parser.add_argument('--B_1', type=int, default=5)
+
+
+    """ dynamic inference"""
+    parser.add_argument('--entropy', type=bool, default=False)
+    parser.add_argument('--confidence_mode', type=str, default='avg', choices=['avg', 'max'])
+    parser.add_argument('--pool_threshold', type=float, default=None)
+    parser.add_argument('--entropy_threshold', type=float, default=None)
 
 
     """ dataset config"""
