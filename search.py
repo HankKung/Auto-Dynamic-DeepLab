@@ -73,7 +73,7 @@ class Trainer(object):
         if self.args.network == 'supernet':
             model = Model_search(num_classes=self.nclass, num_layers=12, F=self.args.F,
                                 B=self.args.B, exit_layer=5, sync_bn=args.sync_bn)
-        elif self.args.network == 'layer_search':
+        elif self.args.network == 'layer_supernet':
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
             model = Model_layer_search(num_classes=self.nclass, num_layers=12, F=self.args.F,
@@ -279,12 +279,7 @@ class Trainer(object):
 
 
     def decoder_save(self, epoch, miou, num='val'):
-        decoder = Decoder(self.model.alphas_1,
-                          self.model.alphas_2,
-                          self.model.betas,
-                          self.args.B)
-        result_paths, result_paths_space = decoder.viterbi_decode()
-        genotype_1, genotype_2 = decoder.genotype_decode()
+
         if type(num) == int:
             num = str(num)
         try:
@@ -293,16 +288,27 @@ class Trainer(object):
         except:
             print('folder path error')
 
+
+        if self.args.network == 'layer_search':
+            decoder = Decoder(None,
+                              self.model.betas,
+                              self.args.B)
+        else:
+            decoder = Decoder(self.alphas,
+                              self.model.betas,
+                              self.args.B)
+            genotype, = decoder.genotype_decode()
+            genotype_filename = os.path.join(dir_name, 'genotype')
+            np.save(genotype_filename, genotype)
+
+        result_paths, result_paths_space = decoder.viterbi_decode()
+
         betas = self.model.betas.data.cpu().numpy()
 
         network_path_filename = os.path.join(dir_name,'network_path')
-        genotype_filename_1 = os.path.join(dir_name, 'genotype_1')
-        genotype_filename_2 = os.path.join(dir_name, 'genotype_2')
         beta_filename = os.path.join(dir_name, 'betas')
 
         np.save(network_path_filename, result_paths)
-        np.save(genotype_filename_1, genotype_1)
-        np.save(genotype_filename_2, genotype_2)
         np.save(beta_filename, betas)
         with open(os.path.join(dir_name, 'miou.txt'), 'w') as f:
                 f.write(str(miou))
@@ -312,7 +318,7 @@ def main():
     parser = argparse.ArgumentParser(description="The Search")
 
     """ Search Network """
-    parser.add_argument('--network', type=str, default='supernet', choices=['supernet', 'layer_search'])
+    parser.add_argument('--network', type=str, default='supernet', choices=['supernet', 'layer_supernet'])
     parser.add_argument('--F', type=int, default=8)
     parser.add_argument('--B', type=int, default=5)
 
@@ -392,7 +398,7 @@ def main():
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
         if epoch >= trainer.args.epochs - 5 and not trainer.args.no_val \
-        and epoch % args.eval_interval == (args.eval_interval - 1):
+        and epoch % args.eval_interval == (args.eval_interval - 1) or epoch == trainer.args.alpha_epoch+1:
             trainer.validation(epoch)
 
     trainer.writer.close()

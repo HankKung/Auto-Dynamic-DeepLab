@@ -1,6 +1,6 @@
 CUDA_VISIBLE_DEVICES=0 python ../search.py \
  --checkname layer_search \
- --network layer_search \
+ --network layer_supernet \
  --batch-size 4 \
  --workers 4 \
  --dataset cityscapes \
