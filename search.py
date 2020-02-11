@@ -20,6 +20,7 @@ from utils.eval_utils import *
 
 from modeling.sync_batchnorm.replicate import patch_replication_callback
 from modeling.model_search import Model_search
+from modeling.model_layer_search import *
 from decoding.decoding_formulas import Decoder
 
 import apex
@@ -72,6 +73,11 @@ class Trainer(object):
         if self.args.network == 'supernet':
             model = Model_search(num_classes=self.nclass, num_layers=12, F=self.args.F,
                                 B=self.args.B, exit_layer=5, sync_bn=args.sync_bn)
+        elif self.args.network == 'layer_search':
+            cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
+            cell_arch = np.load(cell_path)
+            model = Model_layer_search(num_classes=self.nclass, num_layers=12, F=self.args.F,
+                                B=self.args.B, exit_layer=5, sync_bn=args.sync_bn, alphas=cell_arch)
         else:
             model = Model_search_baseline(num_classes=self.nclass, num_layers=12, F=self.args.F,
                                         B=self.args.B, exit_layer=5, sync_bn=args.sync_bn)
@@ -163,7 +169,6 @@ class Trainer(object):
         train_loss = 0.0
         search_loss = 0.0
         self.model.train()
-        self.model.is_train()
         tbar = tqdm(self.train_loaderA)
         num_img_tr = len(self.train_loaderA)
         for i, sample in enumerate(tbar):
@@ -220,7 +225,6 @@ class Trainer(object):
 
     def validation(self, epoch):
         self.model.eval()
-        self.model.is_train()
         self.evaluator_1.reset()
         self.evaluator_2.reset()
         tbar = tqdm(self.val_loader, desc='\r')
@@ -308,7 +312,7 @@ def main():
     parser = argparse.ArgumentParser(description="The Search")
 
     """ Search Network """
-    parser.add_argument('--network', type=str, default='supernet', choices=['supernet, layer_search'])
+    parser.add_argument('--network', type=str, default='supernet', choices=['supernet', 'layer_search'])
     parser.add_argument('--F', type=int, default=8)
     parser.add_argument('--B', type=int, default=5)
 
@@ -353,6 +357,7 @@ def main():
     """ checking point """
     parser.add_argument('--resume', type=str, default=None, help='put the path to resuming file if needed')
     parser.add_argument('--checkname', type=str, default=None, help='set the checkpoint name')
+    parser.add_argument('--saved-arch-path', type=str, default='../searched_arch/')
 
 
     """ evaluation option """

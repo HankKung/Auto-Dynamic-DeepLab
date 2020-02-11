@@ -15,7 +15,7 @@ def make_data_loader(args, **kwargs):
         return train_loader, val_loader, test_loader, num_class
 
     elif args.dataset == 'cityscapes':
-        if args.network == 'supernet':
+        if 'search in 'args.network :
             train_set1, train_set2 = cityscapes.twoTrainSeg(args)
             num_class = train_set1.NUM_CLASSES
             train_loader1 = DataLoader(train_set1, batch_size=args.batch_size, shuffle=True, **kwargs)
