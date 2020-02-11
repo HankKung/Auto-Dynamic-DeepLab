@@ -71,10 +71,10 @@ class Trainer(object):
         """ Define network """
         if self.args.network == 'supernet':
             model = Model_search(num_classes=self.nclass, num_layers=12, F=self.args.F,
-                                B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
+                                B=self.args.B, exit_layer=5, sync_bn=args.sync_bn)
         else:
             model = Model_search_baseline(num_classes=self.nclass, num_layers=12, F=self.args.F,
-                                        B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
+                                        B=self.args.B, exit_layer=5, sync_bn=args.sync_bn)
 
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
@@ -271,21 +271,20 @@ class Trainer(object):
             }, is_best)
 
         """ decode the arch """
-        self.decoder_save()
+        self.decoder_save(epoch, new_pred)
 
 
-    def decoder_save(self, num='val'):
+    def decoder_save(self, epoch, miou, num='val'):
         decoder = Decoder(self.model.alphas_1,
                           self.model.alphas_2,
                           self.model.betas,
-                          self.args.B_1,
-                          self.args.B_2)
+                          self.args.B)
         result_paths, result_paths_space = decoder.viterbi_decode()
         genotype_1, genotype_2 = decoder.genotype_decode()
         if type(num) == int:
             num = str(num)
         try:
-            dir_name = os.path.join(self.saver.experiment_dir, 'candidate_' + num)
+            dir_name = os.path.join(self.saver.experiment_dir, str(epoch) + '_'+ num)
             os.makedirs(dir_name)
         except:
             print('folder path error')
@@ -301,16 +300,17 @@ class Trainer(object):
         np.save(genotype_filename_1, genotype_1)
         np.save(genotype_filename_2, genotype_2)
         np.save(beta_filename, betas)
+        with open(os.path.join(dir_name, 'miou.txt'), 'w') as f:
+                f.write(str(miou))
 
 
 def main():
     parser = argparse.ArgumentParser(description="The Search")
 
     """ Search Network """
-    parser.add_argument('--network', type=str, default='supernet', choices=['supernet'])
+    parser.add_argument('--network', type=str, default='supernet', choices=['supernet, layer_search'])
     parser.add_argument('--F', type=int, default=8)
-    parser.add_argument('--B_2', type=int, default=5)
-    parser.add_argument('--B_1', type=int, default=5)
+    parser.add_argument('--B', type=int, default=5)
 
 
     """ Training Setting """
