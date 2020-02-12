@@ -190,8 +190,7 @@ class Trainer(object):
             self.optimizer.step()
             
             if epoch >= self.args.alpha_epoch:
-                self.model.train()
-                search = next(iter(self.train_loaderB))
+                search = iter(self.train_loaderB).next()
                 image_search, target_search = search['image'], search['label']
                 if self.args.cuda:
                     image_search, target_search = image_search.cuda(), target_search.cuda()
@@ -289,7 +288,7 @@ class Trainer(object):
             print('folder path error')
 
 
-        if self.args.network == 'layer_search':
+        if self.args.network == 'layer_supernet':
             decoder = Decoder(None,
                               self.model.betas,
                               self.args.B)
