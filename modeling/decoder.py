@@ -19,7 +19,6 @@ class Decoder(nn.Module):
                                     BatchNorm(256, eps=eps, momentum=momentum),
                                     nn.ReLU(inplace=True),
                                     nn.Conv2d(256, n_class, kernel_size=1, stride=1))
-        self._init_weight()
 
     def forward(self, x, low_level, size):
         x = F.interpolate(x, [low_level.shape[2], low_level.shape[3]], mode='bilinear') \
@@ -29,14 +28,3 @@ class Decoder(nn.Module):
         x = F.interpolate(x, size, mode='bilinear')
 
         return x
-
-    def _init_weight(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, SynchronizedBatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()

@@ -34,7 +34,6 @@ class ASPP_train(nn.Module):
         self.conv1 = conv(depth * 5, depth, kernel_size=1, stride=1,
                                bias=False)
         self.bn1 = BatchNorm(depth, eps=eps, momentum=momentum)
-        self._init_weight()
 
     def forward(self, x):
         x = self.relu_non_inplace(x)
@@ -67,17 +66,6 @@ class ASPP_train(nn.Module):
         x = self.bn1(x)
         return x
 
-    def _init_weight(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, SynchronizedBatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
 
 class ASPP_Lite(nn.Module):
     def __init__(self, in_channels, low_level_channels, mid_channels, num_classes, BatchNorm):
@@ -101,17 +89,3 @@ class ASPP_Lite(nn.Module):
         t3 = self._1x1_TR(t3)
         t4 = self._1x1_BR(low_level_feature)
         return t3 + t4
-
-    def _init_weight(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, SynchronizedBatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-    def scale_dimension(self, dim, scale):
-        return int((float(dim) - 1.0) * scale + 1.0)
