@@ -208,7 +208,7 @@ class Model_1_baseline (nn.Module):
         x = self.aspp_1(x)
         x = self.decoder_1(x, low_level_feature, size)
 
-        return low_level, two_last_inputs, x, pool_confidence
+        return low_level, two_last_inputs, x
 
 
     def forward_eval(self, x, entropy=False, confidence_mode=False, pool_threshold=False):
@@ -228,34 +228,19 @@ class Model_1_baseline (nn.Module):
 
         x = two_last_inputs[-1]
         if confidence_mode:
-            confidence = self.global_pooling(x, mode=confidence_mode)
+            confidence = global_pooling(x, mode=confidence_mode)
             if pool_threshold and pool_threshold > confidence:
-                return low_level, two_last_inputs, x, pool_confidence
+                return low_level, two_last_inputs, x, confidence
 
         x = self.aspp_1(x)
         x = self.decoder_1(x, low_level_feature, size)
 
         if entropy:
-            confidence = self.shannon_entropy(x)
+            confidence = normalized_shannon_entropy(x)
         if entropy or confidence_mode:
             return low_level, two_last_inputs, x, confidence
         else:
             return low_level, two_last_inputs, x
-
-
-    def global_pooling(self, x, mode='avg'):
-        if mode == 'avg':
-            pool = AdaptiveMaxPool2d(1)
-        elif mode == 'max':
-            pool = nn.AdaptiveAvgPool2d(1)
-        x = pool(x)
-        x = torch.mean(x)
-        return x
-
-    def shannon_entropy(self, x):
-        x = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
-        x = -1.0 * x.sum()
-
 
     def _init_weight(self):
         for m in self.modules():
@@ -363,7 +348,17 @@ class Model_2_baseline (nn.Module):
 
         return y1, y2
 
-    def forward_eval(self, x, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
+    def forward_testing_entropy(self, x, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
+        earlier_exit = False
+
+        _, _, x = self.model_1.forward_eval(x)
+        avg_confidence = global_pooling(x, mode='avg')
+        max_confidence = global_pooling(x, mode='max')
+
+        return x, avg_confidence, max_confidence
+
+
+    def forward_dynamic_inference(self, x, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
         earlier_exit = False
 
         low_level, two_last_inputs, y1, confidence = \

@@ -155,3 +155,18 @@ class ASPP(nn.Module):
         concate = torch.cat([conv11, conv33, upsample], dim=1)
         concate = self.concate_conv(concate)
         return self.final_conv(concate)
+
+
+def normalized_shannon_entropy(x):
+    x = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
+    x = -1.0 * x.sum()
+
+
+def global_pooling(x, mode='avg'):
+    if mode == 'avg':
+        pool = AdaptiveMaxPool2d(1)
+    elif mode == 'max':
+        pool = nn.AdaptiveAvgPool2d(1)
+    x = pool(x)
+    x = torch.mean(x)
+    return x

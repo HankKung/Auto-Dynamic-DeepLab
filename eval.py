@@ -16,6 +16,7 @@ from utils.eval_utils import AverageMeter
 
 from modeling.baseline_model import *
 from modeling.dense_model import *
+from modeling.operations import normalized_shannon_entropy
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.sync_batchnorm.replicate import patch_replication_callback
 
@@ -27,6 +28,7 @@ from ptflops import get_model_complexity_info
 
 class Evaluation(object):
     def __init__(self, args):
+
         self.args = args
 
         # Define Dataloader
@@ -144,8 +146,7 @@ class Evaluation(object):
         test_loss = 0.0
         time_meter_1 = AverageMeter()
         time_meter_2 = AverageMeter()
-        pred_1_meter = AverageMeter()
-        pred_2_meter = AverageMeter()
+
 
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
@@ -171,8 +172,47 @@ class Evaluation(object):
 
         print('Validation:')
         print("mIoU_1:{}, mIoU_2: {}".format(mIoU_1, mIoU_2))
-        # print("device_inference_time:{}, cloud_inference_time: {}".format(time_meter_1.average(), time_meter_2.average()))
-        # print("device_pred_time:{}, cloud_pred_time: {}".format(pred_1_meter.average(), pred_2_meter.average()))
+
+
+    def testing_entropy(self):
+        self.saver = Saver(self.args)
+        self.saver.save_experiment_config()
+
+        """ Define Tensorboard Summary """
+        self.summary = TensorboardSummary(self.saver.experiment_dir)
+        self.writer = self.summary.create_summary()
+
+        self.model.eval()
+        self.evaluator_1.reset()
+        self.evaluator_2.reset()
+        tbar = tqdm(self.val_loader, desc='\r')
+        test_loss = 0.0
+
+        for i, sample in enumerate(tbar):
+            image, target = sample['image'], sample['label']
+            if self.args.cuda:
+                image, target = image.cuda(), target.cuda()
+
+            with torch.no_grad():
+                output_1, avg_confidence, max_confidence = self.model.forward_testing_entropy(image)
+
+            loss_1 = self.criterion(output_1, target)
+
+
+            pred_1 = torch.argmax(output_1, axis=1)
+            entropy = normalized_shannon_entropy(pred_1)
+
+            self.writer.add_scalar('avg_confidence/loss_1', avg_confidence.item(), loss_1.item())
+            self.writer.add_scalar('avg_confidence/entropy', entropy.item(), loss_1.item())
+            self.writer.add_scalar('avg_confidence/entropy', avg_confidence.item(), entropy.item())
+
+            self.writer.add_scalar('max_confidence/loss_1', max_confidence.item(), loss_1.item())
+            self.writer.add_scalar('max_confidence/entropy', entropy.item(), loss_1.item())
+            self.writer.add_scalar('max_confidence/entropy', max_confidence.item(), entropy.item())
+
+        print('testing confidence:')
+        self.writer.close()
+
 
     def dynamic_inference(self, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
         self.model.eval()
@@ -186,7 +226,8 @@ class Evaluation(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output, earlier_exit, confidence = self.model.forward_eval(image)
+                output, earlier_exit, confidence = self.model.forward_dynamic_inference(image, \
+                                                    entropy, confidence_mode, pool_threshold, entropy_threshold)
 
             loss = self.criterion(output, target)
 
@@ -255,7 +296,7 @@ def main():
     """ checking point """
     parser.add_argument('--resume', type=str, default=None)
     parser.add_argument('--saved-arch-path', type=str, default='searched_arch/')
-    parser.add_argument('--checkname', type=str, default=None)
+    parser.add_argument('--checkname', type=str, default='testing')
 
 
     args = parser.parse_args()
