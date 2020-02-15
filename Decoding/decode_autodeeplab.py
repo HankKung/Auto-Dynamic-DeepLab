@@ -20,8 +20,14 @@ class Loader(object):
         if self.args.dataset == 'cityscapes':
             self.nclass = 19
 
-        self.model = AutoDeeplab(num_classes=self.nclass, num_layers=12, filter_multiplier=self.args.filter_multiplier,
-                                 block_multiplier_c=args.block_multiplier, step_c=args.step)
+        if self.args.network == 'supernet':
+            model = Model_search(num_classes=self.nclass, num_layers=12)
+        elif self.args.network == 'layer_supernet':
+            cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
+            cell_arch = np.load(cell_path)
+            model = Model_layer_search(num_classes=self.nclass, num_layers=12)
+        else:
+            model = Model_search_baseline(num_classes=self.nclass, num_layers=12)
         # Using cuda
         if args.cuda:
 
@@ -44,17 +50,14 @@ class Loader(object):
                     name = k[7:]  # remove 'module.' of dataparallel
                     new_state_dict[name] = v
                 self.model.load_state_dict(new_state_dict)
-
             else:
-                if (torch.cuda.device_count() > 1 or args.load_parallel):
+                if (torch.cuda.device_count() > 1):
                     self.model.module.load_state_dict(checkpoint['state_dict'])
                 else:
                     self.model.load_state_dict(checkpoint['state_dict'])
-#        print(self.model.betas[-1])
-        self.decoder = Decoder(self.model.alphas_d,
-                               self.model.alphas_c,
-                               self.model.betas,
-                               args.step)
+        self.decoder = Decoder(self.model.alphas,
+                                self.model.betas,
+                                5)
         print(self.model.betas)
     def retreive_alphas_betas(self):
         return self.model.alphas, self.model.bottom_betas, self.model.betas8, self.model.betas16, self.model.top_betas
@@ -80,16 +83,7 @@ def get_new_network_cell() :
                         choices=['search', 'train'])
     parser.add_argument('--load-parallel', type=int, default=0)
     parser.add_argument('--clean-module', type=int, default=0)
-    parser.add_argument('--crop_size', type=int, default=320,
-                        help='crop image size')
-    parser.add_argument('--resize', type=int, default=512,
-                        help='resize image size')
-    parser.add_argument('--filter_multiplier', type=int, default=8)
-    parser.add_argument('--block_multiplier', type=int, default=5)
-    parser.add_argument('--step', type=int, default=5)
-    parser.add_argument('--batch-size', type=int, default=2,
-                        metavar='N', help='input batch size for \
-                                training (default: auto)')
+
     parser.add_argument('--test-batch-size', type=int, default=None,
                         metavar='N', help='input batch size for \
                                 testing (default: auto)')

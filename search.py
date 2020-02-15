@@ -302,13 +302,17 @@ class Trainer(object):
 
         result_paths, result_paths_space = decoder.viterbi_decode()
 
+        alphas = self.model.alphas.data.cpu.numpy()
         betas = self.model.betas.data.cpu().numpy()
 
         network_path_filename = os.path.join(dir_name,'network_path')
         beta_filename = os.path.join(dir_name, 'betas')
+        alpha_filename = os.path.join(dir_name, 'betas')
 
         np.save(network_path_filename, result_paths)
         np.save(beta_filename, betas)
+        np.save(alpha_filename, alphas)
+
         with open(os.path.join(dir_name, 'miou.txt'), 'w') as f:
                 f.write(str(miou))
 
@@ -396,7 +400,7 @@ def main():
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
-        if epoch >= trainer.args.epochs - 5 and not trainer.args.no_val \
+        if epoch >= trainer.args.epochs - 2 and not trainer.args.no_val \
         and epoch % args.eval_interval == (args.eval_interval - 1) or epoch == trainer.args.alpha_epoch+1:
             trainer.validation(epoch)
 

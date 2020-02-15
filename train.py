@@ -45,16 +45,19 @@ class trainNew(object):
          
         if args.network == 'searched_dense':
             """ 40_5e_lr_38_31.91  """
-            cell_path_1 = os.path.join(args.saved_arch_path, '40_5e_38_lr', 'genotype_1.npy')
-            cell_path_2 = os.path.join(args.saved_arch_path, '40_5e_38_lr','genotype_2.npy')
-            cell_arch_1 = np.load(cell_path_1)
-            cell_arch_2 = np.load(cell_path_2)
-            network_arch = [1, 2, 3, 2, 3, 2, 2, 1, 2, 1, 1, 2]
+            # cell_path_1 = os.path.join(args.saved_arch_path, '40_5e_38_lr', 'genotype_1.npy')
+            # cell_path_2 = os.path.join(args.saved_arch_path, '40_5e_38_lr','genotype_2.npy')
+            # cell_arch_1 = np.load(cell_path_1)
+            # cell_arch_2 = np.load(cell_path_2)
+            # network_arch = [1, 2, 3, 2, 3, 2, 2, 1, 2, 1, 1, 2]
+
+            cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
+            cell_arch = np.load(cell_path)
+            network_arch = [0, 1, 2, 3, 2, 3, 2, 2, 1, 2, 3, 2]
             low_level_layer = 0
 
             model = Model_2(network_arch,
-                            cell_arch_1,
-                            cell_arch_2,
+                            cell_arch,
                             self.nclass,
                             args,
                             low_level_layer)
@@ -67,8 +70,7 @@ class trainNew(object):
             network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
             low_level_layer = 1
             model = Model_2_baseline(network_arch,
-                                        cell_arch_1,
-                                        cell_arch_2,
+                                        cell_arch,
                                         self.nclass,
                                         args,
                                         low_level_layer)
@@ -82,14 +84,12 @@ class trainNew(object):
             if args.network == 'autodeeplab-dense':
                 model = Model_2(network_arch,
                                         cell_arch,
-                                        cell_arch,
                                         self.nclass,
                                         args,
                                         low_level_layer)
 
             elif args.network == 'autodeeplab-baseline':
                 model = Model_2_baseline(network_arch,
-                                        cell_arch,
                                         cell_arch,
                                         self.nclass,
                                         args,
@@ -177,7 +177,7 @@ class trainNew(object):
                 copy_state_dict(self.model.state_dict(), new_state_dict)
 
             else:
-                if (torch.cuda.device_count() > 1 or args.load_parallel):
+                if (torch.cuda.device_count() > 1):
                     copy_state_dict(self.model.module.state_dict(), checkpoint['state_dict'])
                 else:
                     copy_state_dict(self.model.state_dict(), checkpoint['state_dict'])
@@ -201,7 +201,7 @@ class trainNew(object):
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
-                image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
+                image, target = image.cuda(), target.cuda()
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
 
@@ -288,11 +288,8 @@ def main():
         choices=['searched_dense', 'searched_baseline', \
         'autodeeplab-baseline', 'autodeeplab-dense', 'autodeeplab', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
-    parser.add_argument('--lr-aspp', type=bool, default=None)
-    parser.add_argument('--F_2', type=int, default=20)
-    parser.add_argument('--F_1', type=int, default=20)
-    parser.add_argument('--B_2', type=int, default=5)
-    parser.add_argument('--B_1', type=int, default=5)
+    parser.add_argument('--F', type=int, default=20)
+    parser.add_argument('--B', type=int, default=5)
 
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes', choices=['pascal', 'coco', 'cityscapes'], help='dataset name (default: pascal)')
@@ -366,7 +363,8 @@ def main():
     print('Total Epoches:', new_trainer.args.epochs)
     for epoch in range(new_trainer.args.start_epoch, new_trainer.args.epochs):
         new_trainer.training(epoch)
-        if epoch == 0 or epoch % args.eval_interval == (args.eval_interval - 1) or epoch > new_trainer.args.epochs - 50:
+        if epoch == 0 or epoch % args.eval_interval == (args.eval_interval - 1) \
+         or epoch > new_trainer.args.epochs - 100:
             new_trainer.validation(epoch)
     new_trainer.writer.close()
 
