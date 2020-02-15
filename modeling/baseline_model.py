@@ -258,10 +258,8 @@ class Model_2_baseline (nn.Module):
     def __init__(self, network_arch, cell_arch_1, cell_arch_2, num_classes, args, low_level_layer):
         super(Model_2_baseline, self).__init__()
         BatchNorm = SynchronizedBatchNorm2d if args.sync_bn == True else nn.BatchNorm2d
-        F_2 = args.F_2
-        F_1 = args.F_1
-        B_2 = args.B_2
-        B_1 = args.B_1
+        F = args.F
+        B = args.B
         num_model_1_layers = args.num_model_1_layers
         self.num_model_2_layers = len(network_arch) - num_model_1_layers
         self.cells = nn.ModuleList()
@@ -271,7 +269,7 @@ class Model_2_baseline (nn.Module):
 
         model_1_network = network_arch[:args.num_model_1_layers]
         self.model_1 = Model_1_baseline(model_1_network, cell_arch_1, num_classes, num_model_1_layers, \
-                                       BatchNorm, F=F_1, B=B_1, low_level_layer=low_level_layer)
+                                       BatchNorm, F=F, B=B, low_level_layer=low_level_layer)
         self.decoder_2 = Decoder(num_classes, BatchNorm)
         
    
@@ -287,31 +285,31 @@ class Model_2_baseline (nn.Module):
             if i == 0:
                 downup_sample = int(model_1_network[-1] - self.model_2_network[0])
                 pre_downup_sample = int(model_1_network[-2] - self.model_2_network[0])
-                _cell = Cell_baseline(BatchNorm, B_2, 
-                                        F_1 * B_1 * fm[model_1_network[-2]],
-                                        F_1 * B_1 * fm[model_1_network[-1]],
+                _cell = Cell_baseline(BatchNorm, B, 
+                                        F * B * fm[model_1_network[-2]],
+                                        F * B * fm[model_1_network[-1]],
                                         self.cell_arch_2,
                                         self.model_2_network[i],
-                                        F_2 * fm[level],
+                                        F * fm[level],
                                         downup_sample)
             
             elif i == 1:
                 pre_downup_sample = int(model_1_network[-1] - self.model_2_network[1])
                 _cell = Cell_baseline(BatchNorm,
-                                        B_2,
-                                        F_1 * B_1 * fm[model_1_network[-1]],
-                                        F_2 * B_2 * fm[self.model_2_network[0]],
+                                        B,
+                                        F * B * fm[model_1_network[-1]],
+                                        F * B * fm[self.model_2_network[0]],
                                         self.cell_arch_2,
                                         self.model_2_network[i],
-                                        F_2 * fm[level],
+                                        F * fm[level],
                                         downup_sample)
             else:
-                _cell = Cell_baseline(BatchNorm, B_2, 
-                                        F_2 * B_2 * fm[prev_prev_level],
-                                        F_2 * B_2 * fm[prev_level],
+                _cell = Cell_baseline(BatchNorm, B, 
+                                        F * B * fm[prev_prev_level],
+                                        F * B * fm[prev_level],
                                         self.cell_arch_2,
                                         self.model_2_network[i],
-                                        F_2 * fm[level],
+                                        F * fm[level],
                                         downup_sample)
 
             self.cells += [_cell]
@@ -323,11 +321,11 @@ class Model_2_baseline (nn.Module):
 
         self.low_level_conv = nn.Sequential(
                                 nn.ReLU(),
-                                nn.Conv2d(F_1 * B_1 * 2**model_1_network[low_level_layer], 48, 1),
+                                nn.Conv2d(F * B * 2**model_1_network[low_level_layer], 48, 1),
                                 BatchNorm(48)
                                 )
         
-        self.aspp_2 = ASPP_train(F_2 * B_2 * fm[self.model_2_network[-1]], 
+        self.aspp_2 = ASPP_train(F * B * fm[self.model_2_network[-1]], 
                                      256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
 
@@ -351,7 +349,7 @@ class Model_2_baseline (nn.Module):
     def forward_testing_entropy(self, x, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
         earlier_exit = False
 
-        _, _, x = self.model_1.forward_eval(x)
+        _, _, x = self.model_1(x)
         avg_confidence = global_pooling(x, mode='avg')
         max_confidence = global_pooling(x, mode='max')
 
@@ -391,8 +389,6 @@ class Model_2_baseline (nn.Module):
 
         torch.cuda.synchronize()
         tic_1 = time.perf_counter()
-
-        if confidence and confidence 
 
         for i in range(self.num_model_2_layers):
             two_last_inputs = self.cells[i](

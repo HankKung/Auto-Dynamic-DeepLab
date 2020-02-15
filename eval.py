@@ -127,10 +127,7 @@ class Evaluation(object):
                 self.model.load_state_dict(new_state_dict)
 
             else:
-                if (torch.cuda.device_count() > 1 or args.load_parallel):
-                    self.model.module.load_state_dict(checkpoint['state_dict'])
-                else:
-                    self.model.load_state_dict(checkpoint['state_dict'])
+                self.model.load_state_dict(checkpoint['state_dict'])
 
 
             self.best_pred = checkpoint['best_pred']
@@ -198,19 +195,15 @@ class Evaluation(object):
 
             loss_1 = self.criterion(output_1, target)
 
+            entropy = normalized_shannon_entropy(output_1)
 
-            pred_1 = torch.argmax(output_1, axis=1)
-            entropy = normalized_shannon_entropy(pred_1)
+            self.writer.add_scalar('avg_confidence/i', avg_confidence.item(), i)
+            self.writer.add_scalar('max_confidence/i', max_confidence.item(), i)
+            self.writer.add_scalar('entropy/i', entropy.item(), i)
+            self.writer.add_scalar('loss/i', loss_1.item(), i)
 
-            self.writer.add_scalar('avg_confidence/loss_1', avg_confidence.item(), loss_1.item())
-            self.writer.add_scalar('avg_confidence/entropy', entropy.item(), loss_1.item())
-            self.writer.add_scalar('avg_confidence/entropy', avg_confidence.item(), entropy.item())
 
-            self.writer.add_scalar('max_confidence/loss_1', max_confidence.item(), loss_1.item())
-            self.writer.add_scalar('max_confidence/entropy', entropy.item(), loss_1.item())
-            self.writer.add_scalar('max_confidence/entropy', max_confidence.item(), entropy.item())
-
-        print('testing confidence:')
+        print('testing confidence')
         self.writer.close()
 
 
@@ -256,11 +249,8 @@ def main():
     """ model setting """
     parser.add_argument('--network', type=str, default='searched_dense', choices=['searched_dense', 'searched_baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
-    parser.add_argument('--lr-aspp', type=bool, default=None)
-    parser.add_argument('--F_2', type=int, default=20)
-    parser.add_argument('--F_1', type=int, default=20)
-    parser.add_argument('--B_2', type=int, default=5)
-    parser.add_argument('--B_1', type=int, default=5)
+    parser.add_argument('--F', type=int, default=20)
+    parser.add_argument('--B', type=int, default=5)
 
 
     """ dynamic inference"""
@@ -318,9 +308,10 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     evaluation = Evaluation(args)
+    evaluation.testing_entropy()
     # evaluation.mac()
-    evaluation.validation()
-    evaluation.writer.close()
+    #evaluation.validation()
+    #evaluation.writer.close()
 
 if __name__ == "__main__":
    main()

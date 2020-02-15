@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import math
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 
 OPS = {
@@ -157,14 +159,18 @@ class ASPP(nn.Module):
         return self.final_conv(concate)
 
 
-def normalized_shannon_entropy(x):
+def normalized_shannon_entropy(x, num_class=19):
+    size = (x.shape[2], x.shape[3])
     x = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
     x = -1.0 * x.sum()
+    x = x / math.log(num_class)
+    x = x / (size[0] * size[1])
+    return 1.0 - x
 
 
 def global_pooling(x, mode='avg'):
     if mode == 'avg':
-        pool = AdaptiveMaxPool2d(1)
+        pool = nn.AdaptiveMaxPool2d(1)
     elif mode == 'max':
         pool = nn.AdaptiveAvgPool2d(1)
     x = pool(x)
