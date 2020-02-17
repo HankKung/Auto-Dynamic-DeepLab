@@ -53,7 +53,7 @@ class trainNew(object):
 
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
-            network_arch = [0, 1, 2, 3, 2, 3, 2, 2, 1, 2, 3, 2]
+            network_arch = [0, 1, 2, 3, 2, 2, 2, 2, 1, 2, 3, 2]
             low_level_layer = 0
 
             model = Model_2(network_arch,

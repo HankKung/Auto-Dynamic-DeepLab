@@ -1,7 +1,6 @@
 CUDA_VISIBLE_DEVICES=0 python ../train.py \
---checkname testing \
+--checkname searched_dense \
 --network searched_dense \
---lr-aspp True \
 --batch-size 16 \
 --workers 16 \
 --dataset cityscapes \

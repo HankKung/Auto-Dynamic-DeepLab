@@ -26,8 +26,8 @@ class Cell(nn.Module):
                 dense_out=True):
 
         super(Cell, self).__init__()
-        eps = 1e-3
-        momentum = 3e-4
+        eps = 1e-5
+        momentum = 0.1
 
         self.cell_arch = cell_arch
         self.downup_sample = downup_sample
@@ -124,9 +124,8 @@ class Model_1 (nn.Module):
                 BatchNorm,
                 criterion=None,
                 F=20,
-                B=4,
-                low_level_layer=1,
-                lr_aspp=False):
+                B=5,
+                low_level_layer=0):
 
         super(Model_1, self).__init__()
         
@@ -136,13 +135,12 @@ class Model_1 (nn.Module):
         self.num_model_1_layers = num_layers
         self.low_level_layer = low_level_layer
         self._num_classes = num_classes
-        self.lr_aspp = lr_aspp
 
         FB = F * B
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
 
-        eps = 1e-3
-        momentum = 3e-4
+        eps = 1e-5
+        momentum = 0.1
 
         self.stem0 = nn.Sequential(
             nn.Conv2d(3, 64, 3, stride=2, padding=1),
@@ -218,18 +216,15 @@ class Model_1 (nn.Module):
             mult =1
 
 
-        if self.lr_aspp:
-            self.aspp_1 = ASPP_Lite(FB * fm[self.model_1_network[-1]], \
-                                    FB * 2** self.model_1_network[low_level_layer], 128, num_classes, BatchNorm)
-        else:
-            self.aspp_1 = ASPP_train(FB * fm[self.model_1_network[-1]], \
-                                      256, num_classes, BatchNorm, mult=mult)
-            self.low_level_conv = nn.Sequential(
-                                    nn.ReLU(),
-                                    nn.Conv2d(FB * 2** self.model_1_network[low_level_layer], 48, 1),
-                                    BatchNorm(48, eps=eps, momentum=momentum),
-                                    )
-            self.decoder_1 = Decoder(num_classes, BatchNorm)
+
+        self.aspp_1 = ASPP_train(FB * fm[self.model_1_network[-1]], \
+                                  256, num_classes, BatchNorm, mult=mult)
+        self.low_level_conv = nn.Sequential(
+                                nn.ReLU(),
+                                nn.Conv2d(FB * 2** self.model_1_network[low_level_layer], 48, 1),
+                                BatchNorm(48, eps=eps, momentum=momentum),
+                                )
+        self.decoder_1 = Decoder(num_classes, BatchNorm)
 
         self._init_weight()
 
@@ -257,15 +252,10 @@ class Model_1 (nn.Module):
 
             if i == 2:
                 x = two_last_inputs[1]
-                del stem, stem0, stem1, two_last_inputs
 
-        if self.lr_aspp:
-            y = self.aspp_1(x, low_level_feature)
-            y = F.interpolate(y, size, mode='bilinear')
-        else:
-            y = self.aspp_1(x)
-            low_level = self.low_level_conv(low_level_feature)
-            y = self.decoder_1(y, low_level, size)
+        y = self.aspp_1(x)
+        low_level = self.low_level_conv(low_level_feature)
+        y = self.decoder_1(y, low_level, size)
 
         return low_level_feature, dense_feature_map, x, y
 
@@ -285,21 +275,18 @@ class Model_1 (nn.Module):
 class Model_2 (nn.Module):
     def __init__(self,
                 network_arch,
-                cell_arch_1, 
-                cell_arch_2, 
+                cell_arch, 
                 num_classes, 
                 args, 
                 low_level_layer):
 
         super(Model_2, self).__init__()
         BatchNorm = SynchronizedBatchNorm2d if args.sync_bn == True else nn.BatchNorm2d
-        F_2 = args.F_2
-        F_1 = args.F_1
-        B_2 = args.B_2
-        B_1 = args.B_1
+        F = args.F
+        B = args.B
 
-        eps = 1e-3
-        momentum = 3e-4
+        eps = 1e-5
+        momentum = 0.1
 
         self.args = args
         num_model_1_layers = args.num_model_1_layers
@@ -307,12 +294,12 @@ class Model_2 (nn.Module):
 
         self.cells = nn.ModuleList()
         self.model_2_network = network_arch[num_model_1_layers:]
-        self.cell_arch_2 = torch.from_numpy(cell_arch_2)
+        self.cell_arch = torch.from_numpy(cell_arch)
         self._num_classes = num_classes
 
         model_1_network = network_arch[:args.num_model_1_layers]
-        self.model_1 = Model_1(model_1_network, cell_arch_1, num_classes, num_model_1_layers, \
-                                       BatchNorm, F=F_1, B=B_1, low_level_layer=low_level_layer, lr_aspp=args.lr_aspp)
+        self.model_1 = Model_1(model_1_network, cell_arch, num_classes, num_model_1_layers, \
+                                       BatchNorm, F=F, B=B, low_level_layer=low_level_layer)
         self.decoder_2 = Decoder(num_classes, BatchNorm)
           
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
@@ -322,55 +309,55 @@ class Model_2 (nn.Module):
             prev_level = self.model_2_network[i-1]
 
             downup_sample = int(prev_level - level)
-            dense_channel_list_1 = [F_1 * fm[stride] for stride in model_1_network]
+            dense_channel_list_1 = [F * fm[stride] for stride in model_1_network]
 
             if i == 0:
                 downup_sample = int(model_1_network[-1] - self.model_2_network[0])
                 dense_channel_list_2 = dense_channel_list_1[:-1]
                 _cell = Cell(BatchNorm,
-                            B_2, 
+                            B, 
                             dense_channel_list_2,
-                            F_1 * B_1 * fm[model_1_network[-1]],
-                            self.cell_arch_2,
+                            F * B * fm[model_1_network[-1]],
+                            self.cell_arch,
                             self.model_2_network[i],
-                            F_2 * fm[level],
+                            F * fm[level],
                             downup_sample,
                             dense_in=True)
             
             elif i == 1:
                 dense_channel_list_2 = dense_channel_list_1
-                _cell = Cell(BatchNorm, B_2,
+                _cell = Cell(BatchNorm, B,
                             dense_channel_list_2,
-                            F_2 * B_2 * fm[self.model_2_network[0]],
-                            self.cell_arch_2,
+                            F * B * fm[self.model_2_network[0]],
+                            self.cell_arch,
                             self.model_2_network[i],
-                            F_2 * fm[level],
+                            F * fm[level],
                             downup_sample,
                             dense_in=True)
 
             elif i < self.num_model_2_layers - 2:
                 dense_channel_list_2 = dense_channel_list_1 + \
-                                        [F_2 * fm[stride] for stride in self.model_2_network[:i-1]]
+                                        [F * fm[stride] for stride in self.model_2_network[:i-1]]
                 _cell = Cell(BatchNorm,
-                            B_2, 
+                            B, 
                             dense_channel_list_2,
-                            F_2 * B_2 * fm[prev_level],
-                            self.cell_arch_2,
+                            F * B * fm[prev_level],
+                            self.cell_arch,
                             self.model_2_network[i],
-                            F_2 * fm[level],
+                            F * fm[level],
                             downup_sample,
                             dense_in=True)
 
             else:
                 dense_channel_list_2 = dense_channel_list_1 + \
-                                        [F_2 * fm[stride] for stride in self.model_2_network[:i-1]]
+                                        [F * fm[stride] for stride in self.model_2_network[:i-1]]
                 _cell = Cell(BatchNorm,
-                            B_2, 
+                            B, 
                             dense_channel_list_2,
-                            F_2 * B_2 * fm[prev_level],
-                            self.cell_arch_2,
+                            F * B * fm[prev_level],
+                            self.cell_arch,
                             self.model_2_network[i],
-                            F_2 * fm[level],
+                            F * fm[level],
                             downup_sample,
                             dense_in=True,
                             dense_out=False)
@@ -384,10 +371,10 @@ class Model_2 (nn.Module):
 
         self.low_level_conv = nn.Sequential(
                                     nn.ReLU(),
-                                    nn.Conv2d(F_1 * B_1 * 2**model_1_network[low_level_layer], 48, 1),
+                                    nn.Conv2d(F * B * 2**model_1_network[low_level_layer], 48, 1),
                                     BatchNorm(48, eps=eps, momentum=momentum),
                                     )
-        self.aspp_2 = ASPP_train(F_2 * B_2 * fm[self.model_2_network[-1]], 
+        self.aspp_2 = ASPP_train(F * B * fm[self.model_2_network[-1]], 
                                      256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
 

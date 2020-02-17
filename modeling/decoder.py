@@ -7,8 +7,8 @@ class Decoder(nn.Module):
 
     def __init__(self, n_class, BatchNorm):
         super(Decoder, self).__init__()
-        eps = 1e-3
-        momentum = 3e-4
+        eps = 1e-5
+        momentum = 0.1
         self._conv = nn.Sequential(
                                     nn.ReLU(inplace=True),
                                     nn.Conv2d(304, 256, kernel_size=3, stride=1, padding=1, bias=False),

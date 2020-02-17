@@ -318,3 +318,31 @@ class eval_preprocess(object):
 
         return {'image': image,
                 'label': mask}
+
+class full_image_eval_preprocess(object):
+    def __init__(self, crop_size, mean, std):
+        self.crop_size = crop_size
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, sample):
+        image = sample['image']
+        mask = sample['label']
+
+        data_transforms = transforms.Compose([
+          transforms.ToTensor(),
+          transforms.Normalize(self.mean, self.std)
+        ])
+
+        image = data_transforms(image)
+        mask = torch.LongTensor(np.array(mask).astype(np.int64))
+
+        h, w = image.shape[1], image.shape[2]
+        pad_tb = max(0, self.crop_size[0] - h)
+        pad_lr = max(0, self.crop_size[1] - w)
+        image = torch.nn.ZeroPad2d((0, pad_lr, 0, pad_tb))(image)
+        mask = torch.nn.ConstantPad2d((0, pad_lr, 0, pad_tb), 255)(mask)
+
+        return {'image': image,
+                'label': mask}
+
