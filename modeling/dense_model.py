@@ -428,7 +428,7 @@ class Model_2 (nn.Module):
             torch.cuda.synchronize()
             tic_2 = time.perf_counter()
 
-            return y1. x, tic_1 - tic, tic_2 - tic
+            return y1, x, tic_1 - tic, tic_2 - tic
 
 
     def _init_weight(self):

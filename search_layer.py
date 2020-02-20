@@ -70,11 +70,9 @@ class Trainer(object):
 
         """ Define network """
         if self.args.network == 'supernet':
-            model = Model_search(num_classes=self.nclass, num_layers=12, F=self.args.F,
-                                B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
+            model = Model_search(self.nclass, 12, self.args, exit_layer=5)
         else:
-            model = Model_search_baseline(num_classes=self.nclass, num_layers=12, F=self.args.F,
-                                        B_2=self.args.B_2, B_1=self.args.B_1, exit_layer=5, sync_bn=args.sync_bn)
+            model = Model_search_baseline(self.nclass, 12, self.args, exit_layer=5)
 
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
@@ -310,8 +308,7 @@ def main():
     """ Search Network """
     parser.add_argument('--network', type=str, default='supernet', choices=['supernet'])
     parser.add_argument('--F', type=int, default=8)
-    parser.add_argument('--B_2', type=int, default=5)
-    parser.add_argument('--B_1', type=int, default=5)
+    parser.add_argument('--B', type=int, default=5)
 
 
     """ Training Setting """
@@ -343,7 +340,6 @@ def main():
     parser.add_argument('--nesterov', action='store_true', default=False, help='whether use nesterov (default: False)')
     parser.add_argument('--use-amp', action='store_true', default=False) 
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
-    parser.add_argument('--lat-rate', type=float, default=0.001)
 
 
     """ cuda, seed and logging """

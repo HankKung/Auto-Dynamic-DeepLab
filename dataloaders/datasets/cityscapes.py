@@ -107,7 +107,7 @@ class CityscapesSegmentation(data.Dataset):
 
     def transform_val(self, sample):
         if self.search:
-            transform = tr.full_image_preprocess((1025,2049), self.mean, self.std)
+            transform = tr.full_image_eval_preprocess((1025,2049), self.mean, self.std)
        
         else:
             transform = tr.full_image_eval_preprocess((1025,2049), self.mean, self.std)

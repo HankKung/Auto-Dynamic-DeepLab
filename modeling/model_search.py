@@ -11,26 +11,24 @@ class Model_search (nn.Module) :
     def __init__(self,
                 num_classes,
                 num_layers,
-                F=8,
-                B=5,
+                args,
                 exit_layer=5,
-                sync_bn=False,
                 cell=cell_level_search.Cell):
 
         super(Model_search, self).__init__()
 
-        BatchNorm = SynchronizedBatchNorm2d if sync_bn == True else nn.BatchNorm2d
+        BatchNorm = SynchronizedBatchNorm2d if args.sync_bn == True else nn.BatchNorm2d
         self.cells = nn.ModuleList()
         self._num_layers = num_layers
         self._num_classes = num_classes
-        self.B = B
+        self.B = args.B
         self.exit_layer = exit_layer
         self._initialize_alphas_betas ()
-
-        f_initial = F * B
+        F = args.F
+        f_initial = self.F * self.B
         half_f_initial = int(f_initial / 2)
 
-        FB = F * B
+        FB = F * self.B
 
         self.dense_preprocess = nn.ModuleList()
         for i in range(self._num_layers-2):

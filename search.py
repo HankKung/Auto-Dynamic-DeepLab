@@ -71,13 +71,11 @@ class Trainer(object):
 
         """ Define network """
         if self.args.network == 'supernet':
-            model = Model_search(num_classes=self.nclass, num_layers=12, F=self.args.F,
-                                B=self.args.B, exit_layer=5, sync_bn=args.sync_bn)
+            model = Model_search(self.nclass, 12, self.args, exit_layer=5)
         elif self.args.network == 'layer_supernet':
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
-            model = Model_layer_search(num_classes=self.nclass, num_layers=12, F=self.args.F,
-                                B=self.args.B, exit_layer=5, sync_bn=args.sync_bn, alphas=cell_arch)
+            model = Model_layer_search(self.nclass, 12, self.args, exit_layer=5, alphas=cell_arch)
         else:
             model = Model_search_baseline(num_classes=self.nclass, num_layers=12, F=self.args.F,
                                         B=self.args.B, exit_layer=5, sync_bn=args.sync_bn)
@@ -302,7 +300,7 @@ class Trainer(object):
 
         result_paths, result_paths_space = decoder.viterbi_decode()
 
-        alphas = self.model.alphas.data.cpu.numpy()
+        alphas = self.model.alphas.data.cpu().numpy()
         betas = self.model.betas.data.cpu().numpy()
 
         network_path_filename = os.path.join(dir_name,'network_path')
