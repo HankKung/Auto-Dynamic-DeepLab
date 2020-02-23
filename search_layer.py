@@ -70,9 +70,11 @@ class Trainer(object):
 
         """ Define network """
         if self.args.network == 'supernet':
-            model = Model_search(self.nclass, 12, self.args, exit_layer=5)
-        else:
-            model = Model_search_baseline(self.nclass, 12, self.args, exit_layer=5)
+            model = Model_search(self.nclass, 12, self.args)
+        elif self.args.network == 'layer_supernet':
+            cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
+            cell_arch = np.load(cell_path)
+            model = Model_layer_search(self.nclass, 12, self.args, alphas=cell_arch)
 
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
@@ -160,15 +162,13 @@ class Trainer(object):
     def training(self, epoch):
         train_loss = 0.0
         search_loss = 0.0
-        latency_loss = 0.0
         self.model.train()
-        self.model.is_train()
         tbar = tqdm(self.train_loaderA)
         num_img_tr = len(self.train_loaderA)
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
-                image, target = image.cuda(non_blocking=True), target.cuda(non_blocking=True)
+                image, target = image.cuda(), target.cuda()
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             output_1, output_2 = self.model(image)
@@ -184,8 +184,7 @@ class Trainer(object):
             self.optimizer.step()
             
             if epoch >= self.args.alpha_epoch:
-                self.model.train()
-                search = next(iter(self.train_loaderB))
+                search = iter(self.train_loaderB).next()
                 image_search, target_search = search['image'], search['label']
                 if self.args.cuda:
                     image_search, target_search = image_search.cuda(), target_search.cuda()
@@ -195,7 +194,7 @@ class Trainer(object):
 
                 arch_loss_1 = self.criterion(output_search_1, target_search)
                 arch_loss_2 = self.criterion(output_search_2, target_search)
-                arch_loss = arch_loss_1 + arch_loss_2 + self.args.lat_rate * lat
+                arch_loss = arch_loss_1 + arch_loss_2
                 
                 if self.use_amp:
                     with amp.scale_loss(arch_loss, self.architect_optimizer) as arch_scaled_loss:
@@ -215,11 +214,12 @@ class Trainer(object):
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
+        if epoch >= self.args.alpha_epoch:
+            self.decoder_save()
 
 
     def validation(self, epoch):
         self.model.eval()
-        self.model.is_train()
         self.evaluator_1.reset()
         self.evaluator_2.reset()
         tbar = tqdm(self.val_loader, desc='\r')
@@ -273,33 +273,38 @@ class Trainer(object):
         self.decoder_save()
 
 
-    def decoder_save(self, num='val'):
-        decoder = Decoder(self.model.alphas_1,
-                          self.model.alphas_2,
-                          self.model.betas,
-                          self.args.B_1,
-                          self.args.B_2)
-        result_paths, result_paths_space = decoder.viterbi_decode()
-        genotype_1, genotype_2 = decoder.genotype_decode()
+    def decoder_save(self, epoch, miou=None, num='val'):
+
         if type(num) == int:
             num = str(num)
         try:
-            dir_name = os.path.join(self.saver.experiment_dir, 'candidate_' + num)
+            dir_name = os.path.join(self.saver.experiment_dir, str(epoch) + '_'+ num)
             os.makedirs(dir_name)
         except:
             print('folder path error')
 
+        decoder = Decoder(None,
+                          self.model.betas,
+                          self.args.B)
+
+        result_paths, result_paths_space = decoder.viterbi_decode()
+
         betas = self.model.betas.data.cpu().numpy()
 
         network_path_filename = os.path.join(dir_name,'network_path')
-        genotype_filename_1 = os.path.join(dir_name, 'genotype_1')
-        genotype_filename_2 = os.path.join(dir_name, 'genotype_2')
         beta_filename = os.path.join(dir_name, 'betas')
 
         np.save(network_path_filename, result_paths)
-        np.save(genotype_filename_1, genotype_1)
-        np.save(genotype_filename_2, genotype_2)
         np.save(beta_filename, betas)
+
+        if miou != None:
+            with open(os.path.join(dir_name, 'miou.txt'), 'w') as f:
+                    f.write(str(miou))
+        if num == 'val':
+            self.writer.add_text('network_path', str(betas), epochs)
+        else:
+            self.writer.add_text('train/network_path', str(betas), epochs)
+
 
 
 def main():
@@ -384,8 +389,8 @@ def main():
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
-        if epoch >= trainer.args.epochs - 5 and not trainer.args.no_val \
-        and epoch % args.eval_interval == (args.eval_interval - 1):
+        if epoch >= trainer.args.epochs - 2 and not trainer.args.no_val \
+        and epoch % args.eval_interval == (args.eval_interval - 1) or epoch == trainer.args.alpha_epoch+1:
             trainer.validation(epoch)
 
     trainer.writer.close()

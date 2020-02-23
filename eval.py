@@ -202,6 +202,8 @@ class Evaluation(object):
             self.writer.add_scalar('entropy/i', entropy.item(), i)
             self.writer.add_scalar('loss/i', loss_1.item(), i)
 
+            self.summary.visualize_image(self.writer, self.args.dataset, image, target_show, output_2, global_step)
+
 
         print('testing confidence')
         self.writer.close()

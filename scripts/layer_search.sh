@@ -1,11 +1,11 @@
-CUDA_VISIBLE_DEVICES=0 python ../search.py \
+CUDA_VISIBLE_DEVICES=0 python ../search_layer.py \
  --checkname layer_search \
  --network layer_supernet \
  --batch-size 4 \
  --workers 4 \
  --dataset cityscapes \
  --alpha-epoch 60 \
- --epoch 120 \
+ --epoch 100 \
  --lr 0.07 \
  --min-lr 0.005 \
  --arch-lr 0.007 \
