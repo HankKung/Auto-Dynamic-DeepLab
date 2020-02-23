@@ -4,9 +4,10 @@ CUDA_VISIBLE_DEVICES=0 python ../search.py \
  --batch-size 4 \
  --workers 4 \
  --dataset cityscapes \
- --alpha-epoch 10 \
- --epoch 20 \
- --lr 0.04 \
- --min-lr 0.002 \
- --arch-lr 0.003 \
- --weight-decay 3e-4 
+ --alpha-epoch 60 \
+ --epoch 120 \
+ --lr 0.07 \
+ --min-lr 0.005 \
+ --arch-lr 0.007 \
+ --weight-decay 3e-4 \
+ --arch-weight-decay 5e-4 

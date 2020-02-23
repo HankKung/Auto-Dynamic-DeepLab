@@ -21,7 +21,7 @@ class Cell_fixed(nn.Module):
                 pre_preprocess_sample_rate=1):
 
         super(Cell_fixed, self).__init__()
-        eps = 1e-4
+        eps = 1e-5
         momentum = 0.1
 
         self.B = B
@@ -136,23 +136,21 @@ class Model_layer_search (nn.Module) :
     def __init__(self,
                 num_classes,
                 num_layers,
-                F=8,
-                B=5,
+                args,
                 exit_layer=5,
-                sync_bn=False,
                 alphas=None):
 
         super(Model_layer_search, self).__init__()
         cell = Cell_fixed
-        BatchNorm = SynchronizedBatchNorm2d if sync_bn == True else nn.BatchNorm2d
+        BatchNorm = SynchronizedBatchNorm2d if args.sync_bn == True else nn.BatchNorm2d
         self.cells = nn.ModuleList()
         self._num_layers = num_layers
         self._num_classes = num_classes
-        self.B = B
+        self.B = args.B
         self.exit_layer = exit_layer
         self._initialize_alphas_betas()
         self.alphas = alphas
-
+        F = args.F
         f_initial = F * B
         half_f_initial = int(f_initial / 2)
 
@@ -262,29 +260,16 @@ class Model_layer_search (nn.Module) :
                 self.cells += [cell3]
                 self.cells += [cell4]
 
-        # self.aspp_exit_1_4 = nn.Sequential (
-        #     ASPP (FB, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
-        # )
-        self.aspp_exit_1_8 = nn.Sequential (
+        self.aspp_4 = nn.Sequential (
+            ASPP (FB, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
+        )
+        self.aspp_8 = nn.Sequential (
             ASPP (FB * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm) #96 / 8
         )
-        self.aspp_exit_1_16 = nn.Sequential (
+        self.aspp_16 = nn.Sequential (
             ASPP (FB * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) #96 / 16
         )
-        self.aspp_exit_1_32 = nn.Sequential (
-            ASPP (FB * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm) #96 / 32
-        )
-
-        # self.aspp_exit_2_4 = nn.Sequential (
-        #     ASPP (FB, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
-        # )
-        self.aspp_exit_2_8 = nn.Sequential (
-            ASPP (FB * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm) #96 / 8
-        )
-        self.aspp_exit_2_16 = nn.Sequential (
-            ASPP (FB * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) #96 / 16
-        )
-        self.aspp_exit_2_32 = nn.Sequential (
+        self.aspp_32 = nn.Sequential (
             ASPP (FB * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm) #96 / 32
         )
         self._init_weight()
@@ -567,10 +552,10 @@ class Model_layer_search (nn.Module) :
                 level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
                 level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
 
-                # exit_1_4_new = self.aspp_exit_1_4(level_4[-1])
-                exit_1_8_new = self.aspp_exit_1_8(level_8[-1])
-                exit_1_16_new = self.aspp_exit_1_16(level_16[-1])
-                exit_1_32_new = self.aspp_exit_1_32(level_32[-1])
+                exit_1_4_new = self.aspp_4(level_4[-1])
+                exit_1_8_new = self.aspp_8(level_8[-1])
+                exit_1_16_new = self.aspp_16(level_16[-1])
+                exit_1_32_new = self.aspp_32(level_32[-1])
 
             elif layer > self.exit_layer and layer < self._num_layers - 2:
                 level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
@@ -704,33 +689,25 @@ class Model_layer_search (nn.Module) :
                 level_16 = level_16[-1:]
                 level_32 = level_32[-1:]
 
-        # exit_2_4_new = self.aspp_exit_2_4 (level_4[-1])
-        del level_4
-        exit_2_8_new = self.aspp_exit_2_8 (level_8[-1])
-        del level_8
-        exit_2_16_new = self.aspp_exit_2_16 (level_16[-1])
-        del level_16
-        exit_2_32_new = self.aspp_exit_2_32 (level_32[-1])
-        del level_32
+        exit_2_4_new = self.aspp_4 (level_4[-1])
+        exit_2_8_new = self.aspp_8 (level_8[-1])
+        exit_2_16_new = self.aspp_16 (level_16[-1])
+        exit_2_32_new = self.aspp_32 (level_32[-1])
 
         upsample = nn.Upsample(size=x.size()[2:], mode='bilinear', align_corners=True)
-        # exit_2_4_new = upsample (exit_2_4_new)
+        exit_2_4_new = upsample (exit_2_4_new)
         exit_2_8_new = upsample (exit_2_8_new)
         exit_2_16_new = upsample (exit_2_16_new)
         exit_2_32_new = upsample (exit_2_32_new)
 
-        # exit_1_4_new = upsample(exit_1_4_new)
+        exit_1_4_new = upsample(exit_1_4_new)
         exit_1_8_new = upsample(exit_1_8_new)
         exit_1_16_new = upsample(exit_1_16_new)
         exit_1_32_new = upsample(exit_1_32_new)
 
-        # exit_1_sum_feature_map = exit_1_4_new + exit_1_8_new + exit_1_16_new + exit_1_32_new
-        exit_1_sum_feature_map = exit_1_8_new + exit_1_16_new + exit_1_32_new
+        exit_1_sum_feature_map = exit_1_4_new + exit_1_8_new + exit_1_16_new + exit_1_32_new
 
-        # del exit_1_4_new, exit_1_8_new, exit_1_16_new, exit_1_32_new
-
-        # exit_2_sum_feature_map = exit_2_4_new + exit_2_8_new + exit_2_16_new + exit_2_32_new
-        exit_2_sum_feature_map = exit_2_8_new + exit_2_16_new + exit_2_32_new
+        exit_2_sum_feature_map = exit_2_4_new + exit_2_8_new + exit_2_16_new + exit_2_32_new
 
 
         return exit_1_sum_feature_map, exit_2_sum_feature_map
