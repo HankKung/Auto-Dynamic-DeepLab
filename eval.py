@@ -37,33 +37,27 @@ class Evaluation(object):
 
         if args.network == 'searched_dense':
             """ 40_5e_lr_38_31.91  """
-            cell_path_1 = os.path.join(args.saved_arch_path, '40_5e_38_lr', 'genotype_1.npy')
-            cell_path_2 = os.path.join(args.saved_arch_path, '40_5e_38_lr','genotype_2.npy')
-            cell_arch_1 = np.load(cell_path_1)
-            cell_arch_2 = np.load(cell_path_2)
-            network_arch = [1, 2, 3, 2, 3, 2, 2, 1, 2, 1, 1, 2]
+            cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
+            cell_arch = np.load(cell_path)
+            network_arch = [0, 1, 2, 3, 2, 2, 2, 2, 1, 2, 3, 2]
             low_level_layer = 0
 
             model = Model_2(network_arch,
-                            cell_arch_1,
-                            cell_arch_2,
+                            cell_arch,
                             self.nclass,
                             args,
                             low_level_layer)
 
         elif args.network == 'searched_baseline':
-            cell_path_1 = os.path.join(args.saved_arch_path, 'searched_baseline', 'genotype_1.npy')
-            cell_path_2 = os.path.join(args.saved_arch_path, 'searched_baseline','genotype_2.npy')
-            cell_arch_1 = np.load(cell_path_1)
-            cell_arch_2 = np.load(cell_path_2)
+            cell_path = os.path.join(args.saved_arch_path, 'searched_baseline', 'genotype.npy')
+            cell_arch = np.load(cell_path_1)
             network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
             low_level_layer = 1
             model = Model_2_baseline(network_arch,
-                                        cell_arch_1,
-                                        cell_arch_2,
-                                        self.nclass,
-                                        args,
-                                        low_level_layer)
+                                    cell_arch,
+                                    self.nclass,
+                                    args,
+                                    low_level_layer)
 
         elif args.network.startswith('autodeeplab'):
             network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
@@ -73,15 +67,13 @@ class Evaluation(object):
 
             if args.network == 'autodeeplab-dense':
                 model = Model_2(network_arch,
-                                        cell_arch,
-                                        cell_arch,
-                                        self.nclass,
-                                        args,
-                                        low_level_layer)
+                                cell_arch,
+                                self.nclass,
+                                args,
+                                low_level_layer)
 
             elif args.network == 'autodeeplab-baseline':
                 model = Model_2_baseline(network_arch,
-                                        cell_arch,
                                         cell_arch,
                                         self.nclass,
                                         args,
@@ -151,7 +143,7 @@ class Evaluation(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output_1, output_2 = self.model_forward_time(image)
+                output_1, output_2 = self.model(image)
 
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
