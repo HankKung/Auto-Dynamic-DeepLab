@@ -146,10 +146,10 @@ class Model_layer_search (nn.Module) :
         self.cells = nn.ModuleList()
         self._num_layers = num_layers
         self._num_classes = num_classes
-        self.B = args.B
         self.exit_layer = exit_layer
         self._initialize_alphas_betas()
         self.alphas = alphas
+        B = args.B
         F = args.F
         f_initial = F * B
         half_f_initial = int(f_initial / 2)

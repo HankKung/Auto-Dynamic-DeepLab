@@ -20,6 +20,7 @@ from utils.eval_utils import *
 
 from modeling.sync_batchnorm.replicate import patch_replication_callback
 from modeling.model_search import Model_search
+from modeling.model_layer_search import *
 from decoding.decoding_formulas import Decoder
 
 import apex
@@ -215,7 +216,7 @@ class Trainer(object):
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
         if epoch >= self.args.alpha_epoch:
-            self.decoder_save()
+            self.decoder_save(epoch)
 
 
     def validation(self, epoch):
@@ -270,7 +271,7 @@ class Trainer(object):
             }, is_best)
 
         """ decode the arch """
-        self.decoder_save()
+        self.decoder_save(epoch)
 
 
     def decoder_save(self, epoch, miou=None, num='val'):
@@ -301,9 +302,9 @@ class Trainer(object):
             with open(os.path.join(dir_name, 'miou.txt'), 'w') as f:
                     f.write(str(miou))
         if num == 'val':
-            self.writer.add_text('network_path', str(betas), epochs)
+            self.writer.add_text('network_path', str(result_paths), epochs)
         else:
-            self.writer.add_text('train/network_path', str(betas), epochs)
+            self.writer.add_text('train/network_path', str(result_paths), epochs)
 
 
 
@@ -311,7 +312,7 @@ def main():
     parser = argparse.ArgumentParser(description="The Search")
 
     """ Search Network """
-    parser.add_argument('--network', type=str, default='supernet', choices=['supernet'])
+    parser.add_argument('--network', type=str, default='supernet', choices=['supernet, layer_supernet'])
     parser.add_argument('--F', type=int, default=8)
     parser.add_argument('--B', type=int, default=5)
 
@@ -356,7 +357,7 @@ def main():
     """ checking point """
     parser.add_argument('--resume', type=str, default=None, help='put the path to resuming file if needed')
     parser.add_argument('--checkname', type=str, default=None, help='set the checkpoint name')
-
+    parser.add_argument('--saved-arch-path', type=str, default='../searched_arch/')
 
     """ evaluation option """
     parser.add_argument('--eval-interval', type=int, default=1, help='evaluuation interval (default: 1)')
