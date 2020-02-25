@@ -122,7 +122,6 @@ class Model_1 (nn.Module):
                 num_classes,
                 num_layers,
                 BatchNorm,
-                criterion=None,
                 F=20,
                 B=5,
                 low_level_layer=0):
@@ -143,19 +142,19 @@ class Model_1 (nn.Module):
         momentum = 0.1
 
         self.stem0 = nn.Sequential(
-            nn.Conv2d(3, 64, 3, stride=2, padding=1),
+            nn.Conv2d(3, 64, 3, stride=2, padding=1, bias=False),
             BatchNorm(64, eps=eps, momentum=momentum),
             nn.ReLU(inplace=True)
         )
 
         self.stem1 = nn.Sequential(
-            nn.Conv2d(64, 64, 3, padding=1),
+            nn.Conv2d(64, 64, 3, padding=1, bias=False),
             BatchNorm(64, eps=eps, momentum=momentum),
         )
 
         self.stem2 = nn.Sequential(
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, 3, stride=2, padding=1),
+            nn.Conv2d(64, 128, 3, stride=2, padding=1, bias=False),
             BatchNorm(128, eps=eps, momentum=momentum)
         )
 
@@ -221,7 +220,7 @@ class Model_1 (nn.Module):
                                   256, num_classes, BatchNorm, mult=mult)
         self.low_level_conv = nn.Sequential(
                                 nn.ReLU(),
-                                nn.Conv2d(FB * 2** self.model_1_network[low_level_layer], 48, 1),
+                                nn.Conv2d(FB * 2** self.model_1_network[low_level_layer], 48, 1, bias=False),
                                 BatchNorm(48, eps=eps, momentum=momentum),
                                 )
         self.decoder_1 = Decoder(num_classes, BatchNorm)
@@ -371,7 +370,7 @@ class Model_2 (nn.Module):
 
         self.low_level_conv = nn.Sequential(
                                     nn.ReLU(),
-                                    nn.Conv2d(F * B * 2**model_1_network[low_level_layer], 48, 1),
+                                    nn.Conv2d(F * B * 2**model_1_network[low_level_layer], 48, 1, bias=False),
                                     BatchNorm(48, eps=eps, momentum=momentum),
                                     )
         self.aspp_2 = ASPP_train(F * B * fm[self.model_2_network[-1]], 

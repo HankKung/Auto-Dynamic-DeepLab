@@ -117,36 +117,34 @@ class Model_1_baseline (nn.Module):
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
 
         self.stem0 = nn.Sequential(
-            nn.Conv2d(3, 64, 3, stride=2, padding=1),
+            nn.Conv2d(3, 64, 3, stride=2, padding=1, bias=False),
             BatchNorm(64),
             nn.ReLU(inplace=True)
 
         )
         self.stem1 = nn.Sequential(
-            nn.Conv2d(64, 64, 3, padding=1),
+            nn.Conv2d(64, 64, 3, padding=1, bias=False),
             BatchNorm(64),
         )
 
         self.stem2 = nn.Sequential(
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, 3, stride=2, padding=1),
+            nn.Conv2d(64, 128, 3, stride=2, padding=1, bias=False),
             BatchNorm(128),
         )
 
         self.low_level_conv = nn.Sequential(
                                     nn.ReLU(),
-                                    nn.Conv2d(FB * 2**self.model_1_network[low_level_layer], 48, 1),
+                                    nn.Conv2d(FB * 2**self.model_1_network[low_level_layer], 48, 1, bias=False),
                                     BatchNorm(48)
                                     )
 
         for i in range(self.num_model_1_layers):
-
             level = self.model_1_network[i]
             prev_level = self.model_1_network[i-1]
             prev_prev_level = self.model_1_network[i-2]
 
             downup_sample = int(prev_level - level)
-            pre_downup_sample = int(prev_prev_level - level)
             if i == 0:
                 downup_sample = int(0 - level)
                 pre_downup_sample = int(-1 - level)
@@ -321,7 +319,7 @@ class Model_2_baseline (nn.Module):
 
         self.low_level_conv = nn.Sequential(
                                 nn.ReLU(),
-                                nn.Conv2d(F * B * 2**model_1_network[low_level_layer], 48, 1),
+                                nn.Conv2d(F * B * 2**model_1_network[low_level_layer], 48, 1, bias=False),
                                 BatchNorm(48)
                                 )
         

@@ -17,22 +17,19 @@ class ASPP_train(nn.Module):
         self.relu_non_inplace = nn.ReLU()
         self.aspp1 = conv(C, depth, kernel_size=1, stride=1, bias=False)
         self.aspp2 = conv(C, depth, kernel_size=3, stride=1,
-                               dilation=int(6*mult), padding=int(6*mult),
-                               bias=False)
+                               dilation=int(6*mult), padding=int(6*mult), bias=False)
         self.aspp3 = conv(C, depth, kernel_size=3, stride=1,
-                               dilation=int(12*mult), padding=int(12*mult),
-                               bias=False)
+                               dilation=int(12*mult), padding=int(12*mult), bias=False)
         self.aspp4 = conv(C, depth, kernel_size=3, stride=1,
-                               dilation=int(18*mult), padding=int(18*mult),
-                               bias=False)
+                               dilation=int(18*mult), padding=int(18*mult), bias=False)
         self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
+        
         self.aspp1_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp2_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp3_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp4_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp5_bn = BatchNorm(depth, eps=eps, momentum=momentum)
-        self.conv1 = conv(depth * 5, depth, kernel_size=1, stride=1,
-                               bias=False)
+        self.conv1 = conv(depth * 5, depth, kernel_size=1, stride=1, bias=False)
         self.bn1 = BatchNorm(depth, eps=eps, momentum=momentum)
 
     def forward(self, x):
@@ -56,11 +53,6 @@ class ASPP_train(nn.Module):
         x5 = nn.Upsample((x.shape[2], x.shape[3]), mode='bilinear',
                          align_corners=True)(x5)
         x = torch.cat((x1, x2, x3, x4, x5), 1)
-        del x1
-        del x2
-        del x3
-        del x4
-        del x5
 
         x = self.conv1(x)
         x = self.bn1(x)

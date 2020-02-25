@@ -52,12 +52,12 @@ class Model_search (nn.Module) :
                 self.dense_preprocess[i].append(ReLUConvBN(FB * 8, F * 8, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
 
         self.stem0 = nn.Sequential(
-            nn.Conv2d(3, half_f_initial, 3, stride=2, padding=1),
+            nn.Conv2d(3, half_f_initial, 3, stride=2, padding=1, bias=False),
             BatchNorm(half_f_initial),
         )
         self.stem1 = nn.Sequential(
             nn.ReLU(),
-            nn.Conv2d(half_f_initial, f_initial, 3, stride=2, padding=1),
+            nn.Conv2d(half_f_initial, f_initial, 3, stride=2, padding=1, bias=False),
             BatchNorm(f_initial),
         )
 
@@ -135,31 +135,15 @@ class Model_search (nn.Module) :
                 self.cells += [cell3]
                 self.cells += [cell4]
 
-        # self.aspp_exit_1_4 = nn.Sequential (
-        #     ASPP (FB, self._num_classes, 24, 24, BatchNorm=BatchNorm)
-        # )
-        self.aspp_exit_1_8 = nn.Sequential (
-            ASPP (FB * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm)
-        )
-        self.aspp_exit_1_16 = nn.Sequential (
-            ASPP (FB * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) 
-        )
-        self.aspp_exit_1_32 = nn.Sequential (
-            ASPP (FB * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm)
-        )
+        self.aspp_exit_1_4 = ASPP (FB, self._num_classes, 24, 24, BatchNorm=BatchNorm)
+        self.aspp_exit_1_8 = ASPP (FB * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm)
+        self.aspp_exit_1_16 = ASPP (FB * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) 
+        self.aspp_exit_1_32 = ASPP (FB * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm)
 
-        # self.aspp_exit_2_4 = nn.Sequential (
-        #     ASPP (FB, self._num_classes, 24, 24, BatchNorm=BatchNorm) 
-        # )
-        self.aspp_exit_2_8 = nn.Sequential (
-            ASPP (FB * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm)
-        )
-        self.aspp_exit_2_16 = nn.Sequential (
-            ASPP (FB * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm)
-        )
-        self.aspp_exit_2_32 = nn.Sequential (
-            ASPP (FB * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm)
-        )
+        self.aspp_exit_2_4 = ASPP (FB, self._num_classes, 24, 24, BatchNorm=BatchNorm) 
+        self.aspp_exit_2_8 = ASPP (FB * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm)
+        self.aspp_exit_2_16 = ASPP (FB * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm)
+        self.aspp_exit_2_32 = ASPP (FB * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm)
         self._init_weight()
 
 
@@ -604,7 +588,7 @@ class Model_search (nn.Module) :
                 level_16 = level_16[-1:]
                 level_32 = level_32[-1:]
 
-        # exit_2_4_new = self.aspp_exit_2_4 (level_4[-1])
+        exit_2_4_new = self.aspp_exit_2_4 (level_4[-1])
         del level_4
         exit_2_8_new = self.aspp_exit_2_8 (level_8[-1])
         del level_8
@@ -614,23 +598,20 @@ class Model_search (nn.Module) :
         del level_32
 
         upsample = nn.Upsample(size=x.size()[2:], mode='bilinear', align_corners=True)
-        # exit_2_4_new = upsample (exit_2_4_new)
+        exit_2_4_new = upsample (exit_2_4_new)
         exit_2_8_new = upsample (exit_2_8_new)
         exit_2_16_new = upsample (exit_2_16_new)
         exit_2_32_new = upsample (exit_2_32_new)
 
-        # exit_1_4_new = upsample(exit_1_4_new)
+        exit_1_4_new = upsample(exit_1_4_new)
         exit_1_8_new = upsample(exit_1_8_new)
         exit_1_16_new = upsample(exit_1_16_new)
         exit_1_32_new = upsample(exit_1_32_new)
 
 
-        exit_1_sum_feature_map = exit_1_8_new + exit_1_16_new + exit_1_32_new
-        # exit_1_sum_feature_map = exit_1_4_new + exit_1_8_new + exit_1_16_new + exit_1_32_new
-        # del exit_1_4_new, exit_1_8_new, exit_1_16_new, exit_1_32_new
+        exit_1_sum_feature_map = exit_1_4_new + exit_1_8_new + exit_1_16_new + exit_1_32_new
 
-        # exit_2_sum_feature_map = exit_2_4_new + exit_2_8_new + exit_2_16_new + exit_2_32_new
-        exit_2_sum_feature_map = exit_2_8_new + exit_2_16_new + exit_2_32_new
+        exit_2_sum_feature_map = exit_2_4_new + exit_2_8_new + exit_2_16_new + exit_2_32_new
 
 
         return exit_1_sum_feature_map, exit_2_sum_feature_map
@@ -669,7 +650,6 @@ class Model_search (nn.Module) :
 
     def arch_parameters (self) :
         return [param for name, param in self.named_parameters() if name in self._arch_param_names]
-
 
     def weight_parameters(self):
         return [param for name, param in self.named_parameters() if name not in self._arch_param_names]

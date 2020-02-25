@@ -178,12 +178,12 @@ class Model_layer_search (nn.Module) :
                 self.dense_preprocess[i].append(ReLUConvBN(FB * 8, F * 8, 1, 1, 0, BatchNorm=BatchNorm, affine=False))
 
         self.stem0 = nn.Sequential(
-            nn.Conv2d(3, half_f_initial, 3, stride=2, padding=1),
+            nn.Conv2d(3, half_f_initial, 3, stride=2, padding=1, bias=False),
             BatchNorm(half_f_initial),
         )
         self.stem1 = nn.Sequential(
             nn.ReLU(),
-            nn.Conv2d(half_f_initial, f_initial, 3, stride=2, padding=1),
+            nn.Conv2d(half_f_initial, f_initial, 3, stride=2, padding=1, bias=False),
             BatchNorm(f_initial),
         )
 
@@ -260,18 +260,10 @@ class Model_layer_search (nn.Module) :
                 self.cells += [cell3]
                 self.cells += [cell4]
 
-        self.aspp_4 = nn.Sequential (
-            ASPP (FB, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
-        )
-        self.aspp_8 = nn.Sequential (
-            ASPP (FB * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm) #96 / 8
-        )
-        self.aspp_16 = nn.Sequential (
-            ASPP (FB * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) #96 / 16
-        )
-        self.aspp_32 = nn.Sequential (
-            ASPP (FB * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm) #96 / 32
-        )
+        self.aspp_4 = ASPP (FB, self._num_classes, 24, 24, BatchNorm=BatchNorm) #96 / 4 as in the paper
+        self.aspp_8 = ASPP (FB * 2, self._num_classes, 12, 12, BatchNorm=BatchNorm) #96 / 8
+        self.aspp_16 = ASPP (FB * 4, self._num_classes, 6, 6, BatchNorm=BatchNorm) #96 / 16
+        self.aspp_32 = ASPP (FB * 8, self._num_classes, 3, 3, BatchNorm=BatchNorm) #96 / 32
         self._init_weight()
 
 

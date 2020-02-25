@@ -125,14 +125,14 @@ class ASPP(nn.Module):
 
         super(ASPP, self).__init__()
         self.relu = nn.ReLU()
-        self.conv11 = nn.Sequential(nn.Conv2d(in_channels, in_channels, 1, bias=False, ),
+        self.conv11 = nn.Sequential(nn.Conv2d(in_channels, in_channels, 1, bias=False),
                                     BatchNorm(in_channels),
                                     nn.ReLU(inplace=True))
         self.conv33 = nn.Sequential(nn.Conv2d(in_channels, in_channels, 3,
-                                    padding=paddings, dilation=dilations, bias=False, ),
+                                    padding=paddings, dilation=dilations, bias=False),
                                     BatchNorm(in_channels),
                                     nn.ReLU(inplace=True))
-        self.conv_p = nn.Sequential(nn.Conv2d(in_channels, in_channels, 1, bias=False, ),
+        self.conv_p = nn.Sequential(nn.Conv2d(in_channels, in_channels, 1, bias=False),
                                     BatchNorm(in_channels),
                                     nn.ReLU(inplace=True))
 
@@ -147,7 +147,7 @@ class ASPP(nn.Module):
         conv33 = self.conv33(x)
 
         # image pool and upsample
-        image_pool = nn.AvgPool2d(kernel_size=x.size()[2:])
+        image_pool = nn.AdaptiveAvgPool2d(1)
         upsample = nn.Upsample(size=x.size()[2:], mode='bilinear', align_corners=True)
         image_pool = image_pool(x)
         conv_image_pool = self.conv_p(image_pool)
