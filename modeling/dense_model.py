@@ -214,17 +214,6 @@ class Model_1 (nn.Module):
         elif self.model_1_network[-1] == 2:
             mult =1
 
-
-
-        self.aspp_1 = ASPP_train(FB * fm[self.model_1_network[-1]], \
-                                  256, num_classes, BatchNorm, mult=mult)
-        self.low_level_conv = nn.Sequential(
-                                nn.ReLU(),
-                                nn.Conv2d(FB * 2** self.model_1_network[low_level_layer], 48, 1, bias=False),
-                                BatchNorm(48, eps=eps, momentum=momentum),
-                                )
-        self.decoder_1 = Decoder(num_classes, BatchNorm)
-
         self._init_weight()
 
 
@@ -252,11 +241,8 @@ class Model_1 (nn.Module):
             if i == 2:
                 x = two_last_inputs[1]
 
-        y = self.aspp_1(x)
-        low_level = self.low_level_conv(low_level_feature)
-        y = self.decoder_1(y, low_level, size)
 
-        return low_level_feature, dense_feature_map, x, y
+        return low_level_feature, dense_feature_map, x
 
 
     def _init_weight(self):
@@ -299,7 +285,7 @@ class Model_2 (nn.Module):
         model_1_network = network_arch[:args.num_model_1_layers]
         self.model_1 = Model_1(model_1_network, cell_arch, num_classes, num_model_1_layers, \
                                        BatchNorm, F=F, B=B, low_level_layer=low_level_layer)
-        self.decoder_2 = Decoder(num_classes, BatchNorm)
+        self.decoder = Decoder(num_classes, BatchNorm)
           
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
         for i in range(self.num_model_2_layers):
@@ -373,16 +359,19 @@ class Model_2 (nn.Module):
                                     nn.Conv2d(F * B * 2**model_1_network[low_level_layer], 48, 1, bias=False),
                                     BatchNorm(48, eps=eps, momentum=momentum),
                                     )
-        self.aspp_2 = ASPP_train(F * B * fm[self.model_2_network[-1]], 
-                                     256, num_classes, BatchNorm, mult=mult)
+        self.aspp = ASPP_train(F * B * fm[self.model_2_network[-1]], 
+                                     512, BatchNorm, mult=mult)
         self._init_weight()
 
 
     def forward(self, x, evaluation=False):
         size = (x.shape[2], x.shape[3])
         if not evaluation:
-            low_level, dense_feature_map, x, y1 = self.model_1(x)
+            low_level, dense_feature_map, x = self.model_1(x)
             low_level = self.low_level_conv(low_level)
+
+            y1 = self.aspp(x)
+            y1 = self.decoder(y1, low_level, size)
 
             for i in range(self.num_model_2_layers):
                 if i < self.num_model_2_layers - 2:
@@ -395,9 +384,8 @@ class Model_2 (nn.Module):
 
             del feature_map, dense_feature_map
 
-            x = self.aspp_2(x)
-            x = self.decoder_2(x, low_level, size)     
-            del low_level    
+            x = self.aspp(x)
+            x = self.decoder(x, low_level, size)     
 
             return y1, x
 
@@ -405,8 +393,10 @@ class Model_2 (nn.Module):
             torch.cuda.synchronize()
             tic = time.perf_counter()
 
-            low_level, dense_feature_map, x, y1 = self.model_1(x)
+            low_level, dense_feature_map, x = self.model_1(x)
             low_level = self.low_level_conv(low_level)
+            y1 = self.aspp(x)
+            y1 = self.decoder(y1, low_level, size)     
 
             torch.cuda.synchronize()
             tic_1 = time.perf_counter()
@@ -420,9 +410,8 @@ class Model_2 (nn.Module):
                 else:
                     x = self.cells[i](dense_feature_map[:-1], x)
 
-            x = self.aspp_2(x)
-            x = F.interpolate(x, (low_level.shape[2],low_level.shape[3]), mode='bilinear')
-            x = self.decoder_2(x, low_level, size)     
+            x = self.aspp(x)
+            x = self.decoder(x, low_level, size)     
 
             torch.cuda.synchronize()
             tic_2 = time.perf_counter()

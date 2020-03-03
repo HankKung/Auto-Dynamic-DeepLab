@@ -11,7 +11,7 @@ class Decoder(nn.Module):
         momentum = 0.1
         self._conv = nn.Sequential(
                                     nn.ReLU(inplace=True),
-                                    nn.Conv2d(304, 256, kernel_size=3, stride=1, padding=1, bias=False),
+                                    nn.Conv2d(560, 256, kernel_size=3, stride=1, padding=1, bias=False),
                                     BatchNorm(256, eps=eps, momentum=momentum),
                                     nn.ReLU(inplace=True),
                                     # 3x3 conv to refine the features

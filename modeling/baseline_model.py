@@ -133,11 +133,6 @@ class Model_1_baseline (nn.Module):
             BatchNorm(128),
         )
 
-        self.low_level_conv = nn.Sequential(
-                                    nn.ReLU(),
-                                    nn.Conv2d(FB * 2**self.model_1_network[low_level_layer], 48, 1, bias=False),
-                                    BatchNorm(48)
-                                    )
 
         for i in range(self.num_model_1_layers):
             level = self.model_1_network[i]
@@ -184,8 +179,6 @@ class Model_1_baseline (nn.Module):
         elif self.model_1_network[-1] == 2:
             mult =1
 
-        self.aspp_1 = ASPP_train(FB * fm[self.model_1_network[-1]], \
-                                      256, num_classes, BatchNorm, mult=mult)
         self._init_weight()
 
     def forward(self, x):
@@ -203,8 +196,6 @@ class Model_1_baseline (nn.Module):
                 low_level = two_last_inputs[1]
                 low_level_feature = self.low_level_conv(low_level)
         x = two_last_inputs[-1]
-        x = self.aspp_1(x)
-        x = self.decoder_1(x, low_level_feature, size)
 
         return low_level, two_last_inputs, x
 
@@ -253,7 +244,7 @@ class Model_1_baseline (nn.Module):
 
 
 class Model_2_baseline (nn.Module):
-    def __init__(self, network_arch, cell_arch_1, cell_arch_2, num_classes, args, low_level_layer):
+    def __init__(self, network_arch, cell_arch, num_classes, args, low_level_layer):
         super(Model_2_baseline, self).__init__()
         BatchNorm = SynchronizedBatchNorm2d if args.sync_bn == True else nn.BatchNorm2d
         F = args.F
@@ -262,13 +253,13 @@ class Model_2_baseline (nn.Module):
         self.num_model_2_layers = len(network_arch) - num_model_1_layers
         self.cells = nn.ModuleList()
         self.model_2_network = network_arch[num_model_1_layers:]
-        self.cell_arch_2 = torch.from_numpy(cell_arch_2)
+        self.cell_arch = torch.from_numpy(cell_arch)
         self._num_classes = num_classes
 
         model_1_network = network_arch[:args.num_model_1_layers]
-        self.model_1 = Model_1_baseline(model_1_network, cell_arch_1, num_classes, num_model_1_layers, \
+        self.model_1 = Model_1_baseline(model_1_network, cell_arch, num_classes, num_model_1_layers, \
                                        BatchNorm, F=F, B=B, low_level_layer=low_level_layer)
-        self.decoder_2 = Decoder(num_classes, BatchNorm)
+        self.decoder = Decoder(num_classes, BatchNorm)
         
    
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
@@ -286,7 +277,7 @@ class Model_2_baseline (nn.Module):
                 _cell = Cell_baseline(BatchNorm, B, 
                                         F * B * fm[model_1_network[-2]],
                                         F * B * fm[model_1_network[-1]],
-                                        self.cell_arch_2,
+                                        self.cell_arch,
                                         self.model_2_network[i],
                                         F * fm[level],
                                         downup_sample)
@@ -297,7 +288,7 @@ class Model_2_baseline (nn.Module):
                                         B,
                                         F * B * fm[model_1_network[-1]],
                                         F * B * fm[self.model_2_network[0]],
-                                        self.cell_arch_2,
+                                        self.cell_arch,
                                         self.model_2_network[i],
                                         F * fm[level],
                                         downup_sample)
@@ -305,7 +296,7 @@ class Model_2_baseline (nn.Module):
                 _cell = Cell_baseline(BatchNorm, B, 
                                         F * B * fm[prev_prev_level],
                                         F * B * fm[prev_level],
-                                        self.cell_arch_2,
+                                        self.cell_arch,
                                         self.model_2_network[i],
                                         F * fm[level],
                                         downup_sample)
@@ -323,24 +314,25 @@ class Model_2_baseline (nn.Module):
                                 BatchNorm(48)
                                 )
         
-        self.aspp_2 = ASPP_train(F * B * fm[self.model_2_network[-1]], 
-                                     256, num_classes, BatchNorm, mult=mult)
+        self.aspp = ASPP_train(F * B * fm[self.model_2_network[-1]], 
+                                     512, BatchNorm, mult=mult)
         self._init_weight()
 
 
     def forward(self, x):
         size = (x.shape[2], x.shape[3])
-        low_level, two_last_inputs, y1, _ = self.model_1(x)
+        low_level, two_last_inputs, y1 = self.model_1(x)
 
         for i in range(self.num_model_2_layers):
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
             
         y2 = two_last_inputs[-1]
-
-        y2 = self.aspp_2(y2)
+        y1 = self.aspp(y1)
+        y2 = self.aspp(y2)
         low_level = self.low_level_conv(low_level)
-        y2 = self.decoder_2(y2, low_level, size)     
+        y1 = self.decoder(y1, low_level, size)     
+        y2 = self.decoder(y2, low_level, size)     
 
         return y1, y2
 
