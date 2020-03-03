@@ -110,8 +110,6 @@ class Model_1_baseline (nn.Module):
         self.cell_arch = torch.from_numpy(cell_arch)
         self.num_model_1_layers = num_layers
         self._num_classes = num_classes
-        self.low_level_layer = low_level_layer
-        self.decoder_1 = Decoder(num_classes, BatchNorm)
 
         FB = F * B
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
@@ -194,7 +192,6 @@ class Model_1_baseline (nn.Module):
 
             if i == self.low_level_layer:
                 low_level = two_last_inputs[1]
-                low_level_feature = self.low_level_conv(low_level)
         x = two_last_inputs[-1]
 
         return low_level, two_last_inputs, x
@@ -213,16 +210,12 @@ class Model_1_baseline (nn.Module):
 
             if i == self.low_level_layer:
                 low_level = two_last_inputs[1]
-                low_level_feature = self.low_level_conv(low_level)
 
         x = two_last_inputs[-1]
         if confidence_mode:
             confidence = global_pooling(x, mode=confidence_mode)
             if pool_threshold and pool_threshold > confidence:
                 return low_level, two_last_inputs, x, confidence
-
-        x = self.aspp_1(x)
-        x = self.decoder_1(x, low_level_feature, size)
 
         if entropy:
             confidence = normalized_shannon_entropy(x)
@@ -258,9 +251,7 @@ class Model_2_baseline (nn.Module):
 
         model_1_network = network_arch[:args.num_model_1_layers]
         self.model_1 = Model_1_baseline(model_1_network, cell_arch, num_classes, num_model_1_layers, \
-                                       BatchNorm, F=F, B=B, low_level_layer=low_level_layer)
-        self.decoder = Decoder(num_classes, BatchNorm)
-        
+                                       BatchNorm, F=F, B=B, low_level_layer=low_level_layer)        
    
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
         for i in range(self.num_model_2_layers):
@@ -322,7 +313,7 @@ class Model_2_baseline (nn.Module):
     def forward(self, x):
         size = (x.shape[2], x.shape[3])
         low_level, two_last_inputs, y1 = self.model_1(x)
-
+        low_level = self.low_level_conv(low_level)
         for i in range(self.num_model_2_layers):
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
@@ -330,7 +321,6 @@ class Model_2_baseline (nn.Module):
         y2 = two_last_inputs[-1]
         y1 = self.aspp(y1)
         y2 = self.aspp(y2)
-        low_level = self.low_level_conv(low_level)
         y1 = self.decoder(y1, low_level, size)     
         y2 = self.decoder(y2, low_level, size)     
 

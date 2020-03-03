@@ -220,7 +220,7 @@ class trainNew(object):
             train_loss += loss.item()
             if i % 50 == 0:
                 tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
-            
+            del loss_1, loss_2, loss, scaled_loss
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
