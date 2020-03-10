@@ -110,6 +110,7 @@ class Model_1_baseline (nn.Module):
         self.cell_arch = torch.from_numpy(cell_arch)
         self.num_model_1_layers = num_layers
         self._num_classes = num_classes
+        self.low_level_layer = low_level_layer
 
         FB = F * B
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
@@ -307,6 +308,7 @@ class Model_2_baseline (nn.Module):
         
         self.aspp = ASPP_train(F * B * fm[self.model_2_network[-1]], 
                                      512, BatchNorm, mult=mult)
+        self.decoder = Decoder(num_classes, BatchNorm)
         self._init_weight()
 
 
