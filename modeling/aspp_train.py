@@ -21,16 +21,24 @@ class ASPP_train(nn.Module):
         self.aspp4 = conv(C, depth, kernel_size=3, stride=1,
                                dilation=int(18*mult), padding=int(18*mult), bias=False)
         self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
+
+        self.context_conv1 = conv(C, depth, kernel_size=3, , padding=1, dilation=1, bias=False)
+        self.context = BaseOC_Context_Module(in_channels=out_features, out_channels=out_features, key_channels=out_features//2, value_channels=out_features, 
+                                    dropout=0, sizes=([2]))
+
         
         self.aspp1_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp2_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp3_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp4_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp5_bn = BatchNorm(depth, eps=eps, momentum=momentum)
+        self.context_bn_1 = BatchNorm(depth, eps=eps, momentum=momentum)
+        self.context_bn_2 = BatchNorm(depth, eps=eps, momentum=momentum)
+
         self.conv1 = conv(depth * 5, out, kernel_size=1, stride=1, bias=False)
         self.bn1 = BatchNorm(out, eps=eps, momentum=momentum)
 
-    def forward(self, x):
+    def forward(self, x, entropy=None):
         x = self.relu_non_inplace(x)
         x1 = self.aspp1(x)
         x1 = self.aspp1_bn(x1)
@@ -44,12 +52,21 @@ class ASPP_train(nn.Module):
         x4 = self.aspp4(x)
         x4 = self.aspp4_bn(x4)
         x4 = self.relu(x4)
-        x5 = self.global_pooling(x)
-        x5 = self.aspp5(x5)
-        x5 = self.aspp5_bn(x5)
-        x5 = self.relu(x5)
-        x5 = nn.Upsample((x.shape[2], x.shape[3]), mode='bilinear',
-                         align_corners=True)(x5)
+
+        if entropy != None:
+            x5 = self.context_conv1(x)
+            x5 = self.context_bn_1(x5)
+            x5 = self.relu(x5)
+            x5 = self.context(x5, entropy)
+            x5 = self.context_bn_2(x5)
+            x5 = self.relu(x5)
+        else:
+            x5 = self.global_pooling(x)
+            x5 = self.aspp5(x5)
+            x5 = self.aspp5_bn(x5)
+            x5 = self.relu(x5)
+            x5 = nn.Upsample((x.shape[2], x.shape[3]), mode='bilinear',
+                             align_corners=True)(x5)
         x = torch.cat((x1, x2, x3, x4, x5), 1)
 
         x = self.conv1(x)
