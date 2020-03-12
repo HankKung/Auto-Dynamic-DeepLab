@@ -1,13 +1,15 @@
-CUDA_VISIBLE_DEVICES=0 python ../search_layer.py \
- --checkname layer_search \
+CUDA_VISIBLE_DEVICES=1 python ../search_layer.py \
+ --checkname layer_search_90alpha_100e_5e-3wd_6e-3awd_1e-4alr_05lr \
  --network layer_supernet \
- --batch-size 4 \
- --workers 4 \
+ --batch-size 8 \
+ --workers 8 \
  --dataset cityscapes \
- --alpha-epoch 60 \
+ --alpha-epoch 90 \
  --epoch 100 \
- --lr 0.07 \
- --min-lr 0.005 \
- --arch-lr 0.007 \
- --weight-decay 3e-4 \
- --arch-weight-decay 5e-4 
+ --lr 0.05 \
+ --min-lr 0.004 \
+ --arch-lr 1e-4 \
+ --weight-decay 5e-3 \
+ --arch-weight-decay 6e-3 \
+ --use-amp \
+ --opt-level O1
