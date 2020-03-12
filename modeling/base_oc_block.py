@@ -18,19 +18,6 @@ from torch import nn
 from torch.nn import functional as F
 import functools
 
-torch_ver = torch.__version__[:3]
-
-if torch_ver == '0.4':
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    sys.path.append(os.path.join(BASE_DIR, '../inplace_abn'))
-    from bn import InPlaceABNSync
-    BatchNorm2d = functools.partial(InPlaceABNSync, activation='none')
-    
-elif torch_ver == '0.3':
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    sys.path.append(os.path.join(BASE_DIR, '../inplace_abn_03'))
-    from modules import InPlaceABNSync
-    BatchNorm2d = functools.partial(InPlaceABNSync, activation='none') 
 
 class _SelfAttentionBlock(nn.Module):
     '''
@@ -46,7 +33,7 @@ class _SelfAttentionBlock(nn.Module):
         N X C X H X W
         position-aware context features.(w/o concate or add with the input)
     '''
-    def __init__(self, in_channels, key_channels, value_channels, out_channels=None, scale=1):
+    def __init__(self, in_channels, key_channels, value_channels, out_channels=None, scale=1, BatchNorm=nn.BatchNorm2d):
         super(_SelfAttentionBlock, self).__init__()
         self.scale = scale
         self.in_channels = in_channels
@@ -55,11 +42,14 @@ class _SelfAttentionBlock(nn.Module):
         self.value_channels = value_channels
         if out_channels == None:
             self.out_channels = in_channels
+
+        self.relu = nn.ReLU(inplace=True)
         self.pool = nn.MaxPool2d(kernel_size=(scale, scale))
         self.f_key = nn.Sequential(
             nn.Conv2d(in_channels=self.in_channels, out_channels=self.key_channels,
                 kernel_size=1, stride=1, padding=0),
-            InPlaceABNSync(self.key_channels),
+            BatchNorm(self.key_channels),
+            self.relu()
         )
         self.f_query = self.f_key
         self.f_value = nn.Conv2d(in_channels=self.in_channels, out_channels=self.value_channels,
@@ -70,7 +60,7 @@ class _SelfAttentionBlock(nn.Module):
         nn.init.constant(self.W.bias, 0)
 
 
-    def forward(self, x):
+    def forward(self, x, entropy):
         batch_size, h, w = x.size(0), x.size(2), x.size(3)
         if self.scale > 1:
             x = self.pool(x)
@@ -90,56 +80,18 @@ class _SelfAttentionBlock(nn.Module):
         context = context.view(batch_size, self.value_channels, *x.size()[2:])
         context = self.W(context)
         if self.scale > 1:
-            if torch_ver == '0.4':
-                context = F.upsample(input=context, size=(h, w), mode='bilinear', align_corners=True)
-            elif torch_ver == '0.3':
-                context = F.upsample(input=context, size=(h, w), mode='bilinear')
+            context = F.interpolate(context, [h, fw], mode='bilinear')
         return context
 
 
 class SelfAttentionBlock2D(_SelfAttentionBlock):
-    def __init__(self, in_channels, key_channels, value_channels, out_channels=None, scale=1):
+    def __init__(self, in_channels, key_channels, value_channels, out_channels=None, scale=1, BatchNorm=nn.BatchNorm2d):
         super(SelfAttentionBlock2D, self).__init__(in_channels,
                                                     key_channels,
                                                     value_channels,
                                                     out_channels,
-                                                    scale)
-
-
-class BaseOC_Module(nn.Module):
-    """
-    Implementation of the BaseOC module
-    Parameters:
-        in_features / out_features: the channels of the input / output feature maps.
-        dropout: we choose 0.05 as the default value.
-        size: you can apply multiple sizes. Here we only use one size.
-    Return:
-        features fused with Object context information.
-    """
-    def __init__(self, in_channels, out_channels, key_channels, value_channels, dropout, sizes=([1])):
-        super(BaseOC_Module, self).__init__()
-        self.stages = []
-        self.stages = nn.ModuleList([self._make_stage(in_channels, out_channels, key_channels, value_channels, size) for size in sizes])        
-        self.conv_bn_dropout = nn.Sequential(
-            nn.Conv2d(2*in_channels, out_channels, kernel_size=1, padding=0),
-            InPlaceABNSync(out_channels),
-            nn.Dropout2d(dropout)
-            )
-
-    def _make_stage(self, in_channels, output_channels, key_channels, value_channels, size):
-        return SelfAttentionBlock2D(in_channels,
-                                    key_channels,
-                                    value_channels,
-                                    output_channels, 
-                                    size)
-        
-    def forward(self, feats):
-        priors = [stage(feats) for stage in self.stages]
-        context = priors[0]
-        for i in range(1, len(priors)):
-            context += priors[i]
-        output = self.conv_bn_dropout(torch.cat([context, feats], 1))
-        return output
+                                                    scale,
+                                                    BatchNorm)
 
 
 class BaseOC_Context_Module(nn.Module):
@@ -147,32 +99,32 @@ class BaseOC_Context_Module(nn.Module):
     Output only the context features.
     Parameters:
         in_features / out_features: the channels of the input / output feature maps.
-        dropout: specify the dropout ratio
         fusion: We provide two different fusion method, "concat" or "add"
         size: we find that directly learn the attention weights on even 1/8 feature maps is hard.
     Return:
         features after "concat" or "add"
     """
-    def __init__(self, in_channels, out_channels, key_channels, value_channels, dropout, sizes=([1])):
+    def __init__(self, in_channels, out_channels, key_channels, value_channels, BatchNorm, sizes=([1])):
         super(BaseOC_Context_Module, self).__init__()
         self.stages = []
         self.stages = nn.ModuleList([self._make_stage(in_channels, out_channels, key_channels, value_channels, size) for size in sizes])
-        self.conv_bn_dropout = nn.Sequential(
+        self.conv_bn = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0),
-            InPlaceABNSync(out_channels),
+            BatchNorm(out_channels),
             )
 
     def _make_stage(self, in_channels, output_channels, key_channels, value_channels, size):
         return SelfAttentionBlock2D(in_channels,
                                     key_channels,
                                     value_channels,
-                                    output_channels, 
-                                    size)
+                                    output_channels,
+                                    size,
+                                    BatchNorm)
         
     def forward(self, feats):
         priors = [stage(feats) for stage in self.stages]
         context = priors[0]
         for i in range(1, len(priors)):
             context += priors[i]
-        output = self.conv_bn_dropout(context)
+        output = self.conv_bn(context)
         return output

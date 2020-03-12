@@ -23,8 +23,8 @@ class ASPP_train(nn.Module):
         self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
 
         self.context_conv1 = conv(C, depth, kernel_size=3, , padding=1, dilation=1, bias=False)
-        self.context = BaseOC_Context_Module(in_channels=out_features, out_channels=out_features, key_channels=out_features//2, value_channels=out_features, 
-                                    dropout=0, sizes=([2]))
+        self.context = BaseOC_Context_Module(in_channels=depth, out_channels=depth, key_channels=depth//2, \
+                                            value_channels=depth, BatchNorm, sizes=([2]))
 
         
         self.aspp1_bn = BatchNorm(depth, eps=eps, momentum=momentum)
