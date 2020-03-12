@@ -20,7 +20,8 @@ from utils.eval_utils import *
 
 from modeling.sync_batchnorm.replicate import patch_replication_callback
 from modeling.model_search import Model_search
-from modeling.model_layer_search import *
+from modeling.model_path_search import *
+from modeling.model_baseline_path_search import *
 from decoding.decoding_formulas import Decoder
 
 import apex
@@ -72,10 +73,19 @@ class Trainer(object):
         """ Define network """
         if self.args.network == 'supernet':
             model = Model_search(self.nclass, 12, self.args)
-        elif self.args.network == 'layer_supernet':
+        elif self.args.network == 'path_dense_supernet':
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
             model = Model_layer_search(self.nclass, 12, self.args, alphas=cell_arch)
+
+        elif self.args.network == 'path_baseline_supernet':
+            cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
+            cell_arch = np.load(cell_path)
+            model = Model_layer_search_baseline(self.nclass, 12, self.args, alphas=cell_arch)
+
+        else:
+            return
+
 
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
@@ -312,7 +322,8 @@ def main():
     parser = argparse.ArgumentParser(description="The Search")
 
     """ Search Network """
-    parser.add_argument('--network', type=str, default='supernet', choices=['supernet, layer_supernet'])
+    parser.add_argument('--network', type=str, default='supernet', \
+        choices=['supernet', 'path_dense_supernet', 'path_baseline_supernet'])
     parser.add_argument('--F', type=int, default=8)
     parser.add_argument('--B', type=int, default=5)
 
