@@ -225,8 +225,8 @@ class Trainer(object):
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
-        if epoch >= self.args.alpha_epoch:
-            self.decoder_save(epoch)
+
+        self.decoder_save(epoch)
 
 
     def validation(self, epoch):
@@ -312,9 +312,9 @@ class Trainer(object):
             with open(os.path.join(dir_name, 'miou.txt'), 'w') as f:
                     f.write(str(miou))
         if num == 'val':
-            self.writer.add_text('network_path', str(result_paths), epochs)
+            self.writer.add_text('network_path', str(result_paths), epoch+1000)
         else:
-            self.writer.add_text('train/network_path', str(result_paths), epochs)
+            self.writer.add_text('train/network_path', str(result_paths), epoch)
 
 
 
