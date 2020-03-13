@@ -360,11 +360,14 @@ class Model_2 (nn.Module):
                                     BatchNorm(48, eps=eps, momentum=momentum),
                                     )
         self.aspp = ASPP_train(F * B * fm[self.model_2_network[-1]], 
-                                     512, BatchNorm, mult=mult)
+                                512,
+                                BatchNorm,
+                                mult=mult,
+                                use_oc=self.args.use_oc)
         self._init_weight()
 
 
-    def forward(self, x, evaluation=False):
+    def forward(self, x, evaluation=False, threshold=None):
         size = (x.shape[2], x.shape[3])
         if not evaluation:
             low_level, dense_feature_map, x = self.model_1(x)
@@ -372,6 +375,9 @@ class Model_2 (nn.Module):
 
             y1 = self.aspp(x)
             y1 = self.decoder(y1, low_level, size)
+
+            if self.args.use_oc and self.args.confidence_map:
+                confidence_map = normalized_shannon_entropy(y1, get_value=False)
 
             for i in range(self.num_model_2_layers):
                 if i < self.num_model_2_layers - 2:
@@ -384,12 +390,15 @@ class Model_2 (nn.Module):
 
             del feature_map, dense_feature_map
 
-            x = self.aspp(x)
+            if self.args.confidence_map:
+                x = self.aspp(x, confidence_map)
+            else:
+                x = self.aspp(x)
             x = self.decoder(x, low_level, size)     
 
             return y1, x
 
-        else:
+        elif evaluation and threshold == None:
             torch.cuda.synchronize()
             tic = time.perf_counter()
 
@@ -397,6 +406,9 @@ class Model_2 (nn.Module):
             low_level = self.low_level_conv(low_level)
             y1 = self.aspp(x)
             y1 = self.decoder(y1, low_level, size)     
+
+            if self.args.use_oc and self.args.confidence_map:
+                confidence_map, confidence = normalized_shannon_entropy(y1, get_value=True)
 
             torch.cuda.synchronize()
             tic_1 = time.perf_counter()
@@ -410,13 +422,43 @@ class Model_2 (nn.Module):
                 else:
                     x = self.cells[i](dense_feature_map[:-1], x)
 
-            x = self.aspp(x)
+            if self.args.confidence_map:
+                x = self.aspp(x, confidence_map)
+            else:
+                x = self.aspp(x)
             x = self.decoder(x, low_level, size)     
 
             torch.cuda.synchronize()
             tic_2 = time.perf_counter()
 
             return y1, x, tic_1 - tic, tic_2 - tic
+
+        else:
+            low_level, dense_feature_map, x = self.model_1(x)
+            low_level = self.low_level_conv(low_level)
+
+            y1 = self.aspp(x)
+            y1 = self.decoder(y1, low_level, size)
+
+            confidence_map, entropy = normalized_shannon_entropy(y1)
+            if entropy < threshold:
+                return y1
+
+            for i in range(self.num_model_2_layers):
+                if i < self.num_model_2_layers - 2:
+                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
+                    dense_feature_map.append(feature_map)
+                elif i == self.num_model_2_layers -1:
+                    x = self.cells[i](dense_feature_map, x)
+                else:
+                    x = self.cells[i](dense_feature_map[:-1], x)
+            if self.args.confidence_map:
+                x = self.aspp(x, confidence_map)
+            else:
+                x = self.aspp(x)
+            x = self.decoder(x, low_level, size)     
+
+            return x
 
 
     def _init_weight(self):

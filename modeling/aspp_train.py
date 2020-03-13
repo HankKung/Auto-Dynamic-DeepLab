@@ -6,10 +6,11 @@ from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.operations import ReLUConvBN
 
 class ASPP_train(nn.Module):
-    def __init__(self, C, out, BatchNorm, depth=256, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1):
+    def __init__(self, C, out, BatchNorm, depth=256, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1, use_oc=False):
         super(ASPP_train, self).__init__()
         self._C = C
         self._depth = depth
+        self.use_oc = use_oc
         self.global_pooling = nn.AdaptiveAvgPool2d(1)
         self.relu = nn.ReLU(inplace=True)
         self.relu_non_inplace = nn.ReLU()
@@ -22,23 +23,24 @@ class ASPP_train(nn.Module):
                                dilation=int(18*mult), padding=int(18*mult), bias=False)
         self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
 
-        self.context_conv1 = conv(C, depth, kernel_size=3, , padding=1, dilation=1, bias=False)
-        self.context = BaseOC_Context_Module(in_channels=depth, out_channels=depth, key_channels=depth//2, \
-                                            value_channels=depth, BatchNorm, sizes=([2]))
+        if use_oc:
+            self.context_conv1 = conv(C, depth, kernel_size=3, , padding=1, dilation=1, bias=False)
+            self.context = BaseOC_Context_Module(in_channels=depth, out_channels=depth, key_channels=depth//2, \
+                                          value_channels=depth, BatchNorm, sizes=([2])) 
+            self.context_bn_1 = BatchNorm(depth, eps=eps, momentum=momentum)
+            self.context_bn_2 = BatchNorm(depth, eps=eps, momentum=momentum)
 
-        
         self.aspp1_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp2_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp3_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp4_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp5_bn = BatchNorm(depth, eps=eps, momentum=momentum)
-        self.context_bn_1 = BatchNorm(depth, eps=eps, momentum=momentum)
-        self.context_bn_2 = BatchNorm(depth, eps=eps, momentum=momentum)
+
 
         self.conv1 = conv(depth * 5, out, kernel_size=1, stride=1, bias=False)
         self.bn1 = BatchNorm(out, eps=eps, momentum=momentum)
 
-    def forward(self, x, entropy=None):
+    def forward(self, x, confidence_map=None):
         x = self.relu_non_inplace(x)
         x1 = self.aspp1(x)
         x1 = self.aspp1_bn(x1)
@@ -53,11 +55,11 @@ class ASPP_train(nn.Module):
         x4 = self.aspp4_bn(x4)
         x4 = self.relu(x4)
 
-        if entropy != None:
+        if self.use_oc:
             x5 = self.context_conv1(x)
             x5 = self.context_bn_1(x5)
             x5 = self.relu(x5)
-            x5 = self.context(x5, entropy)
+            x5 = self.context(x5, confidence_map)
             x5 = self.context_bn_2(x5)
             x5 = self.relu(x5)
         else:

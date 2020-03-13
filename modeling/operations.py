@@ -159,13 +159,18 @@ class ASPP(nn.Module):
         return self.final_conv(concate)
 
 
-def normalized_shannon_entropy(x, num_class=19):
+def normalized_shannon_entropy(x, get_value=False, num_class=19):
     size = (x.shape[2], x.shape[3])
     x = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
-    x = -1.0 * x.sum()
     x = x / math.log(num_class)
+    confidence_map = 1.0 - x 
+
+    if get_value:
+      return confidence_map
+
+    x = x.sum()
     x = x / (size[0] * size[1])
-    return 1.0 - x
+    return confidence_map, x
 
 
 def global_pooling(x, mode='avg'):

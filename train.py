@@ -290,6 +290,9 @@ def main():
     parser.add_argument('--num_model_1_layers', type=int, default=6)
     parser.add_argument('--F', type=int, default=20)
     parser.add_argument('--B', type=int, default=5)
+    parser.add_argument('--use-oc', type=bool, default=False)
+    parser.add_argument('--confidence_map', type=bool, default=False)
+
 
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes', choices=['pascal', 'coco', 'cityscapes'], help='dataset name (default: pascal)')
