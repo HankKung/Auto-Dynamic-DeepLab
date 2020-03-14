@@ -281,15 +281,17 @@ class Trainer(object):
             }, is_best)
 
         """ decode the arch """
-        self.decoder_save(epoch)
+        self.decoder_save(epoch, miou=new_pred, evaluation=True)
 
 
-    def decoder_save(self, epoch, miou=None, num='val'):
+    def decoder_save(self, epoch, miou=None, evaluation=False):
 
-        if type(num) == int:
-            num = str(num)
+        
+        num = str(epoch)
+        if evaluation:
+            num = num + '_eval'
         try:
-            dir_name = os.path.join(self.saver.experiment_dir, str(epoch) + '_'+ num)
+            dir_name = os.path.join(self.saver.experiment_dir, num)
             os.makedirs(dir_name)
         except:
             print('folder path error')
@@ -311,10 +313,11 @@ class Trainer(object):
         if miou != None:
             with open(os.path.join(dir_name, 'miou.txt'), 'w') as f:
                     f.write(str(miou))
-        if num == 'val':
+        if evaluation:
             self.writer.add_text('network_path', str(result_paths), epoch+1000)
+            self.writer.add_text('miou', str(result_paths), epoch+1000)
         else:
-            self.writer.add_text('train/network_path', str(result_paths), epoch)
+            self.writer.add_text('network_path', str(result_paths), epoch)
 
 
 

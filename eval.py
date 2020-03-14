@@ -183,7 +183,7 @@ class Evaluation(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output_1, avg_confidence, max_confidence = self.model.forward_testing_entropy(image)
+                output_1, avg_confidence, max_confidence = self.model.testing_entropy(image)
 
             loss_1 = self.criterion(output_1, target)
 
@@ -201,7 +201,7 @@ class Evaluation(object):
         self.writer.close()
 
 
-    def dynamic_inference(self, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
+    def dynamic_inference(self, threshold=None):
         self.model.eval()
         self.evaluator_1.reset()
         tbar = tqdm(self.val_loader, desc='\r')
@@ -213,12 +213,35 @@ class Evaluation(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output, earlier_exit, confidence = self.model.forward_dynamic_inference(image, \
-                                                    entropy, confidence_mode, pool_threshold, entropy_threshold)
+                output, confidence, earlier_exit = self.model.dynamic_inference(image, threshold)
 
             loss = self.criterion(output, target)
+            pred = torch.argmax(output, axis=1)
+
+            # Add batch sample into evaluator
+            self.evaluator_1.add_batch(target, pred)
+
+        mIoU = self.evaluator_1.Mean_Intersection_over_Union()
+
+        print('Validation:')
+        print("mIoU_1:".format(mIoU_1))
 
 
+    def time_measure(self, threshold=None):
+        self.model.eval()
+        self.evaluator_1.reset()
+        tbar = tqdm(self.val_loader, desc='\r')
+        test_loss = 0.0
+
+        for i, sample in enumerate(tbar):
+            image, target = sample['image'], sample['label']
+            if self.args.cuda:
+                image, target = image.cuda(), target.cuda()
+
+            with torch.no_grad():
+                output, confidence, earlier_exit = self.model.time_measure(image, threshold)
+
+            loss = self.criterion(output, target)
             pred = torch.argmax(output, axis=1)
 
             # Add batch sample into evaluator
@@ -247,7 +270,7 @@ def main():
     parser.add_argument('--B', type=int, default=5)
     parser.add_argument('--use-oc', type=bool, default=False)
     parser.add_argument('--confidence_map', type=bool, default=False)
-    
+
 
     """ dynamic inference"""
     parser.add_argument('--entropy', type=bool, default=False)
