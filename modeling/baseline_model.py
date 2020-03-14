@@ -328,7 +328,7 @@ class Model_2_baseline (nn.Module):
 
         return y1, y2
 
-    def forward_testing_entropy(self, x, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
+    def testing_entropy(self, x, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
         earlier_exit = False
 
         _, _, x = self.model_1(x)
@@ -338,36 +338,36 @@ class Model_2_baseline (nn.Module):
         return x, avg_confidence, max_confidence
 
 
-    def forward_dynamic_inference(self, x, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
-        earlier_exit = False
+    def dynamic_inference(self, x, threshold=False):
+        size = (x.shape[2], x.shape[3])
 
-        low_level, two_last_inputs, y1, confidence = \
-        self.model_1.forward_eval(x, entropy=entropy, confidence_mode=confidence_mode,\
-        pool_threshold=pool_threshold, entropy_threshold=entropy_threshold)
+        low_level, two_last_inputs, y1 = self.model_1(x)
+        low_level = self.low_level_conv(low_level)
+        y1 = self.aspp(x)
+        y1 = self.decoder(y1, low_level, size)
 
-        if confidence_mode and confidence > confidence:
-            earlier_exit = True
-            return y1, confidence, earlier_exit
-        elif entropy and entropy_threshold < confidence:
-            earlier_exit = True
-            return y1, confidence, earlier_exit
+        _, entropy = normalized_shannon_entropy(y1, get_value=True)
+        if entropy < threshold:
+            return y1, True
 
         for i in range(self.num_model_2_layers):
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
 
         y2 = two_last_inputs[-1]
-        y2 = self.aspp_2(y2)
-        low_level = self.low_level_conv(low_level)
-        y2 = self.decoder_2(y2, low_level, size)
+        y2 = self.aspp(y2)
+        y2 = self.decoder(y2, low_level, size)
 
-        return y2, earlier_exit, confidence 
+        return y2, False
 
-    def forward_time_eval(self, x):
+    def time_measure(self, x):
         torch.cuda.synchronize()
         tic = time.perf_counter()
 
-        low_level, two_last_inputs, y1, _ = self.model_1(x)
+        low_level, two_last_inputs, y1 = self.model_1(x)
+        low_level = self.low_level_conv(low_level)
+        y1 = self.aspp(x)
+        y1 = self.decoder(y1, low_level, size)
 
         torch.cuda.synchronize()
         tic_1 = time.perf_counter()
@@ -377,9 +377,8 @@ class Model_2_baseline (nn.Module):
                 two_last_inputs[0], two_last_inputs[1])
 
         y2 = two_last_inputs[-1]
-        y2 = self.aspp_2(y2)
-        low_level = self.low_level_conv(low_level)
-        y2 = self.decoder_2(y2, low_level, size)
+        y2 = self.aspp(y2)
+        y2 = self.decoder(y2, low_level, size)
 
         torch.cuda.synchronize()
         tic_2 = time.perf_counter()
