@@ -367,98 +367,101 @@ class Model_2 (nn.Module):
         self._init_weight()
 
 
-    def forward(self, x, evaluation=False, threshold=None):
+    def forward(self, x, threshold=None):
         size = (x.shape[2], x.shape[3])
-        if not evaluation:
-            low_level, dense_feature_map, x = self.model_1(x)
-            low_level = self.low_level_conv(low_level)
+        low_level, dense_feature_map, x = self.model_1(x)
+        low_level = self.low_level_conv(low_level)
 
-            y1 = self.aspp(x)
-            y1 = self.decoder(y1, low_level, size)
+        y1 = self.aspp(x)
+        y1 = self.decoder(y1, low_level, size)
 
-            if self.args.use_oc and self.args.confidence_map:
-                confidence_map = normalized_shannon_entropy(y1, get_value=False)
+        if self.args.use_oc and self.args.confidence_map:
+            confidence_map = normalized_shannon_entropy(y1, get_value=False)
 
-            for i in range(self.num_model_2_layers):
-                if i < self.num_model_2_layers - 2:
-                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                    dense_feature_map.append(feature_map)
-                elif i == self.num_model_2_layers -1:
-                    x = self.cells[i](dense_feature_map, x)
-                else:
-                    x = self.cells[i](dense_feature_map[:-1], x)
-
-            del feature_map, dense_feature_map
-
-            if self.args.confidence_map:
-                x = self.aspp(x, confidence_map)
+        for i in range(self.num_model_2_layers):
+            if i < self.num_model_2_layers - 2:
+                _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
+                dense_feature_map.append(feature_map)
+            elif i == self.num_model_2_layers -1:
+                x = self.cells[i](dense_feature_map, x)
             else:
-                x = self.aspp(x)
-            x = self.decoder(x, low_level, size)     
+                x = self.cells[i](dense_feature_map[:-1], x)
 
-            return y1, x
+        del feature_map, dense_feature_map
 
-        elif evaluation and threshold == None:
-            torch.cuda.synchronize()
-            tic = time.perf_counter()
-
-            low_level, dense_feature_map, x = self.model_1(x)
-            low_level = self.low_level_conv(low_level)
-            y1 = self.aspp(x)
-            y1 = self.decoder(y1, low_level, size)     
-
-            if self.args.use_oc and self.args.confidence_map:
-                confidence_map, confidence = normalized_shannon_entropy(y1, get_value=True)
-
-            torch.cuda.synchronize()
-            tic_1 = time.perf_counter()
-
-            for i in range(self.num_model_2_layers):
-                if i < self.num_model_2_layers - 2:
-                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                    dense_feature_map.append(feature_map)
-                elif i == self.num_model_2_layers -1:
-                    x = self.cells[i](dense_feature_map, x)
-                else:
-                    x = self.cells[i](dense_feature_map[:-1], x)
-
-            if self.args.confidence_map:
-                x = self.aspp(x, confidence_map)
-            else:
-                x = self.aspp(x)
-            x = self.decoder(x, low_level, size)     
-
-            torch.cuda.synchronize()
-            tic_2 = time.perf_counter()
-
-            return y1, x, tic_1 - tic, tic_2 - tic
-
+        if self.args.confidence_map:
+            x = self.aspp(x, confidence_map)
         else:
-            low_level, dense_feature_map, x = self.model_1(x)
-            low_level = self.low_level_conv(low_level)
+            x = self.aspp(x)
+        x = self.decoder(x, low_level, size)     
 
-            y1 = self.aspp(x)
-            y1 = self.decoder(y1, low_level, size)
+        return y1, x
 
-            confidence_map, entropy = normalized_shannon_entropy(y1)
-            if entropy < threshold:
-                return y1
 
-            for i in range(self.num_model_2_layers):
-                if i < self.num_model_2_layers - 2:
-                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                    dense_feature_map.append(feature_map)
-                elif i == self.num_model_2_layers -1:
-                    x = self.cells[i](dense_feature_map, x)
-                else:
-                    x = self.cells[i](dense_feature_map[:-1], x)
-            if self.args.confidence_map:
-                x = self.aspp(x, confidence_map)
+    def dynamic_inference(self, x, threshold=False):
+        size = (x.shape[2], x.shape[3])
+        low_level, dense_feature_map, x = self.model_1(x)
+        low_level = self.low_level_conv(low_level)
+
+        y1 = self.aspp(x)
+        y1 = self.decoder(y1, low_level, size)
+
+        confidence_map, entropy = normalized_shannon_entropy(y1, get_value=True)
+        if entropy < threshold:
+            return y1, True
+
+        for i in range(self.num_model_2_layers):
+            if i < self.num_model_2_layers - 2:
+                _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
+                dense_feature_map.append(feature_map)
+            elif i == self.num_model_2_layers -1:
+                x = self.cells[i](dense_feature_map, x)
             else:
-                x = self.aspp(x)
-            x = self.decoder(x, low_level, size)     
+                x = self.cells[i](dense_feature_map[:-1], x)
 
-            return x
+        if self.args.confidence_map:
+            x = self.aspp(x, confidence_map)
+        else:
+            x = self.aspp(x)
+        x = self.decoder(x, low_level, size)     
+
+        return x, False
+
+    def time_measure(self, x):
+        size = (x.shape[2], x.shape[3])
+        torch.cuda.synchronize()
+        tic = time.perf_counter()
+
+        low_level, dense_feature_map, x = self.model_1(x)
+        low_level = self.low_level_conv(low_level)
+        y1 = self.aspp(x)
+        y1 = self.decoder(y1, low_level, size)     
+
+        if self.args.use_oc and self.args.confidence_map:
+            confidence_map, confidence = normalized_shannon_entropy(y1, get_value=False)
+
+        torch.cuda.synchronize()
+        tic_1 = time.perf_counter()
+
+        for i in range(self.num_model_2_layers):
+            if i < self.num_model_2_layers - 2:
+                _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
+                dense_feature_map.append(feature_map)
+            elif i == self.num_model_2_layers -1:
+                x = self.cells[i](dense_feature_map, x)
+            else:
+                x = self.cells[i](dense_feature_map[:-1], x)
+
+        if self.args.confidence_map:
+            x = self.aspp(x, confidence_map)
+        else:
+            x = self.aspp(x)
+        x = self.decoder(x, low_level, size)     
+
+        torch.cuda.synchronize()
+        tic_2 = time.perf_counter()
+
+        return y1, x, tic_1 - tic, tic_2 - tic
 
 
     def _init_weight(self):

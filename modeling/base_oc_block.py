@@ -60,7 +60,7 @@ class _SelfAttentionBlock(nn.Module):
         nn.init.constant(self.W.bias, 0)
 
 
-    def forward(self, x, entropy):
+    def forward(self, x, confidence_map):
         batch_size, h, w = x.size(0), x.size(2), x.size(3)
         if self.scale > 1:
             x = self.pool(x)
@@ -121,8 +121,8 @@ class BaseOC_Context_Module(nn.Module):
                                     size,
                                     BatchNorm)
         
-    def forward(self, feats):
-        priors = [stage(feats) for stage in self.stages]
+    def forward(self, feats, confidence_map):
+        priors = [stage(feats, confidence_map) for stage in self.stages]
         context = priors[0]
         for i in range(1, len(priors)):
             context += priors[i]
