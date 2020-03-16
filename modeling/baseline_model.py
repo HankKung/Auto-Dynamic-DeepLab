@@ -340,10 +340,9 @@ class Model_2_baseline (nn.Module):
 
     def dynamic_inference(self, x, threshold=False):
         size = (x.shape[2], x.shape[3])
-
         low_level, two_last_inputs, y1 = self.model_1(x)
         low_level = self.low_level_conv(low_level)
-        y1 = self.aspp(x)
+        y1 = self.aspp(y1)
         y1 = self.decoder(y1, low_level, size)
 
         _, entropy = normalized_shannon_entropy(y1, get_value=True)
@@ -361,12 +360,13 @@ class Model_2_baseline (nn.Module):
         return y2, False
 
     def time_measure(self, x):
+        size = (x.shape[2], x.shape[3])
         torch.cuda.synchronize()
         tic = time.perf_counter()
 
         low_level, two_last_inputs, y1 = self.model_1(x)
         low_level = self.low_level_conv(low_level)
-        y1 = self.aspp(x)
+        y1 = self.aspp(y1)
         y1 = self.decoder(y1, low_level, size)
 
         torch.cuda.synchronize()

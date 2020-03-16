@@ -224,7 +224,7 @@ class Evaluation(object):
         print("mIoU_1:".format(mIoU_1))
 
 
-    def time_measure(self, threshold=None):
+    def time_measure(self):
         time_meter_1 = AverageMeter()
         time_meter_2 = AverageMeter()
         self.model.eval()
@@ -238,7 +238,7 @@ class Evaluation(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output, confidence, t1, t2 = self.model.time_measure(image, threshold)
+                _, _, t1, t2 = self.model.time_measure(image)
             time_meter_1.update(t1)
             time_meter_2.update(t2)
             print(time_meter_1.average())

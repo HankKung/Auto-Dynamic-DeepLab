@@ -360,7 +360,7 @@ class Model_2 (nn.Module):
                                     BatchNorm(48, eps=eps, momentum=momentum),
                                     )
         self.aspp = ASPP_train(F * B * fm[self.model_2_network[-1]], 
-                                512,
+                                256,
                                 BatchNorm,
                                 mult=mult,
                                 use_oc=self.args.use_oc)

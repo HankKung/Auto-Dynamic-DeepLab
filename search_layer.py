@@ -315,7 +315,7 @@ class Trainer(object):
                     f.write(str(miou))
         if evaluation:
             self.writer.add_text('network_path', str(result_paths), epoch+1000)
-            self.writer.add_text('miou', str(result_paths), epoch+1000)
+            self.writer.add_text('miou', str(miou), epoch+1000)
         else:
             self.writer.add_text('network_path', str(result_paths), epoch)
 
