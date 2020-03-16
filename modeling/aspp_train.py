@@ -6,7 +6,7 @@ from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.operations import ReLUConvBN
 
 class ASPP_train(nn.Module):
-    def __init__(self, C, out, BatchNorm, depth=256, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1, use_oc=False):
+    def __init__(self, C, out, BatchNorm, depth=512, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1, use_oc=False):
         super(ASPP_train, self).__init__()
         self._C = C
         self._depth = depth
