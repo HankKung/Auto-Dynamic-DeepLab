@@ -54,13 +54,16 @@ class _SelfAttentionBlock(nn.Module):
         self.f_query = self.f_key
         self.f_value = nn.Conv2d(in_channels=self.in_channels, out_channels=self.value_channels,
             kernel_size=1, stride=1, padding=0)
-        self.W = nn.Conv2d(in_channels=self.value_channels, out_channels=self.out_channels,
-            kernel_size=1, stride=1, padding=0)
+        self.W = nn.Sequential(nn.Conv2d(in_channels=self.value_channels, out_channels=self.out_channels,
+                                        kernel_size=1, stride=1, padding=0),
+                                BatchNorm(self.key_channels),
+                                self.relu()
+                                )
         nn.init.constant(self.W.weight, 0)
         nn.init.constant(self.W.bias, 0)
 
 
-    def forward(self, x, confidence_map):
+    def forward(self, x, confidence_map=None):
         batch_size, h, w = x.size(0), x.size(2), x.size(3)
         if self.scale > 1:
             x = self.pool(x)
@@ -81,6 +84,9 @@ class _SelfAttentionBlock(nn.Module):
         context = self.W(context)
         if self.scale > 1:
             context = F.interpolate(context, [h, fw], mode='bilinear')
+        if confidence_map != None:
+            confidence_map = F.interpolate(confidence_map, [h, fw], mode='bilinear')
+            context = context * confidence_map
         return context
 
 
