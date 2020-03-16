@@ -50,7 +50,7 @@ class Evaluation(object):
 
         elif args.network == 'searched_baseline':
             cell_path = os.path.join(args.saved_arch_path, 'searched_baseline', 'genotype.npy')
-            cell_arch = np.load(cell_path_1)
+            cell_arch = np.load(cell_path)
             network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
             low_level_layer = 1
             model = Model_2_baseline(network_arch,
@@ -133,9 +133,6 @@ class Evaluation(object):
         self.evaluator_2.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
-        time_meter_1 = AverageMeter()
-        time_meter_2 = AverageMeter()
-
 
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
@@ -228,6 +225,8 @@ class Evaluation(object):
 
 
     def time_measure(self, threshold=None):
+        time_meter_1 = AverageMeter()
+        time_meter_2 = AverageMeter()
         self.model.eval()
         self.evaluator_1.reset()
         tbar = tqdm(self.val_loader, desc='\r')
@@ -239,18 +238,12 @@ class Evaluation(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output, confidence, earlier_exit = self.model.time_measure(image, threshold)
+                output, confidence, t1, t2 = self.model.time_measure(image, threshold)
+            time_meter_1.update(t1)
+            time_meter_2.update(t2)
+            print(time_meter_1.average())
+            print(time_meter_2.average())
 
-            loss = self.criterion(output, target)
-            pred = torch.argmax(output, axis=1)
-
-            # Add batch sample into evaluator
-            self.evaluator_1.add_batch(target, pred)
-
-        mIoU = self.evaluator_1.Mean_Intersection_over_Union()
-
-        print('Validation:')
-        print("mIoU_1:".format(mIoU_1))
 
 
     def mac(self):
