@@ -47,9 +47,10 @@ class Saver(object):
         p = OrderedDict()
         p['network'] = self.args.network
         p['datset'] = self.args.dataset
-        p['lr'] = self.args.lr
-        p['lr_scheduler'] = self.args.lr_scheduler
-        p['epoch'] = self.args.epochs
+        if self.args.use_amp:
+            p['lr'] = self.args.lr
+            p['lr_scheduler'] = self.args.lr_scheduler
+            p['epoch'] = self.args.epochs
 
 
         for key, val in p.items():

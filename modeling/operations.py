@@ -161,8 +161,8 @@ class ASPP(nn.Module):
 
 def normalized_shannon_entropy(x, get_value=False, num_class=19):
     size = (x.shape[2], x.shape[3])
-    x = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
-    x = torch.sum(x, dim=1)
+    x = F.softmax(x, dim=1).permute(0, 2, 3, 1) * F.log_softmax(x, dim=1).permute(0, 2, 3, 1)
+    x = torch.sum(x, dim=3)
     x = x / math.log(num_class)
     x = -x
     confidence_map = 1.0 - x 
@@ -172,7 +172,7 @@ def normalized_shannon_entropy(x, get_value=False, num_class=19):
 
     x = x.sum()
     x = x / (size[0] * size[1])
-    return confidence_map, x
+    return confidence_map, x.item()
 
 
 def global_pooling(x, mode='avg'):

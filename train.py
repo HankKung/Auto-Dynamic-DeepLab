@@ -15,9 +15,12 @@ from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
 from utils.copy_state_dict import copy_state_dict
+from utils.eval_utils import AverageMeter
+
 
 from modeling.baseline_model import *
 from modeling.dense_model import *
+from modeling.operations import normalized_shannon_entropy
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.sync_batchnorm.replicate import patch_replication_callback
 
@@ -230,6 +233,8 @@ class trainNew(object):
         self.model.eval()
         self.evaluator_1.reset()
         self.evaluator_2.reset()
+        confidence_meter_1 = AverageMeter()
+        confidence_meter_2 = AverageMeter()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
         for i, sample in enumerate(tbar):
@@ -249,6 +254,11 @@ class trainNew(object):
             pred_1 = torch.argmax(output_1, axis=1)
             pred_2 = torch.argmax(output_2, axis=1)
 
+            _, confidence_1 = normalized_shannon_entropy(output_1, get_value=True)
+            _, confidence_2 = normalized_shannon_entropy(output_1, get_value=True)
+            confidence_meter_1.update(confidence_1)
+            confidence_meter_2.update(confidence_2)
+
             """ Add batch sample into evaluator """
             self.evaluator_1.add_batch(target, pred_1)
             self.evaluator_2.add_batch(target, pred_2)
@@ -259,9 +269,14 @@ class trainNew(object):
         mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
         mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
 
+        mean_confidence_1 = confidence_meter_1.average()
+        mean_confidence_2 = confidence_meter_2.average()
+
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
         self.writer.add_scalar('val/classifier_1/mIoU', mIoU_1, epoch)
         self.writer.add_scalar('val/classifier_2/mIoU', mIoU_2, epoch)
+        self.writer.add_scalar('val/classifier_1/confidence', mean_confidence_1, epoch)
+        self.writer.add_scalar('val/classifier_2/confidence', mean_confidence_2, epoch)
 
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.test_batch_size + image.data.shape[0]))
@@ -366,7 +381,7 @@ def main():
     print('Total Epoches:', new_trainer.args.epochs)
     for epoch in range(new_trainer.args.start_epoch, new_trainer.args.epochs):
         new_trainer.training(epoch)
-        if epoch == 0 or epoch % args.eval_interval == (args.eval_interval - 1) \
+        if epoch < 5 or epoch % args.eval_interval == (args.eval_interval - 1) \
          or epoch > new_trainer.args.epochs - 100:
             new_trainer.validation(epoch)
     new_trainer.writer.close()
