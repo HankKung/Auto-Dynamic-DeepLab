@@ -43,24 +43,23 @@ class _SelfAttentionBlock(nn.Module):
         if out_channels == None:
             self.out_channels = in_channels
 
-        self.relu = nn.ReLU(inplace=True)
         self.pool = nn.MaxPool2d(kernel_size=(scale, scale))
         self.f_key = nn.Sequential(
             nn.Conv2d(in_channels=self.in_channels, out_channels=self.key_channels,
                 kernel_size=1, stride=1, padding=0),
             BatchNorm(self.key_channels),
-            self.relu()
+            nn.ReLU(inplace=True)
         )
         self.f_query = self.f_key
         self.f_value = nn.Conv2d(in_channels=self.in_channels, out_channels=self.value_channels,
             kernel_size=1, stride=1, padding=0)
         self.W = nn.Sequential(nn.Conv2d(in_channels=self.value_channels, out_channels=self.out_channels,
                                         kernel_size=1, stride=1, padding=0),
-                                BatchNorm(self.key_channels),
-                                self.relu()
+                                BatchNorm(self.out_channels),
+                                nn.ReLU(inplace=True)
                                 )
-        nn.init.constant(self.W.weight, 0)
-        nn.init.constant(self.W.bias, 0)
+        nn.init.constant(self.W[0].weight, 0)
+        nn.init.constant(self.W[0].bias, 0)
 
 
     def forward(self, x, confidence_map=None):
@@ -83,9 +82,9 @@ class _SelfAttentionBlock(nn.Module):
         context = context.view(batch_size, self.value_channels, *x.size()[2:])
         context = self.W(context)
         if self.scale > 1:
-            context = F.interpolate(context, [h, fw], mode='bilinear')
+            context = F.interpolate(context, [h, w], mode='bilinear')
         if confidence_map != None:
-            confidence_map = F.interpolate(confidence_map, [h, fw], mode='bilinear')
+            confidence_map = F.interpolate(confidence_map, [h, w], mode='bilinear')
             context = context * confidence_map
         return context
 
@@ -113,13 +112,13 @@ class BaseOC_Context_Module(nn.Module):
     def __init__(self, in_channels, out_channels, key_channels, value_channels, BatchNorm, sizes=([1])):
         super(BaseOC_Context_Module, self).__init__()
         self.stages = []
-        self.stages = nn.ModuleList([self._make_stage(in_channels, out_channels, key_channels, value_channels, size) for size in sizes])
+        self.stages = nn.ModuleList([self._make_stage(in_channels, out_channels, key_channels, value_channels, BatchNorm, size) for size in sizes])
         self.conv_bn = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0),
             BatchNorm(out_channels),
             )
 
-    def _make_stage(self, in_channels, output_channels, key_channels, value_channels, size):
+    def _make_stage(self, in_channels, output_channels, key_channels, value_channels, BatchNorm, size):
         return SelfAttentionBlock2D(in_channels,
                                     key_channels,
                                     value_channels,
@@ -127,7 +126,7 @@ class BaseOC_Context_Module(nn.Module):
                                     size,
                                     BatchNorm)
         
-    def forward(self, feats, confidence_map):
+    def forward(self, feats, confidence_map=None):
         priors = [stage(feats, confidence_map) for stage in self.stages]
         context = priors[0]
         for i in range(1, len(priors)):

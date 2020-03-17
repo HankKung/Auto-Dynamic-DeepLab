@@ -165,7 +165,7 @@ def normalized_shannon_entropy(x, get_value=False, num_class=19):
     x = x / math.log(num_class)
     confidence_map = 1.0 - x 
 
-    if get_value:
+    if not get_value:
       return confidence_map
 
     x = x.sum()

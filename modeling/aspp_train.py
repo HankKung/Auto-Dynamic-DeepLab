@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.operations import ReLUConvBN
+from modeling.base_oc_block import BaseOC_Context_Module
 
 class ASPP_train(nn.Module):
     def __init__(self, C, out, BatchNorm, depth=256, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1, use_oc=False):

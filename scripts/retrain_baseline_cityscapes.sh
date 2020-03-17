@@ -1,14 +1,17 @@
-CUDA_VISIBLE_DEVICES=0 python ../train.py \
- --checkname autodeeplab-baseline \
- --network autodeeplab-baseline \
- --dataset cityscapes \
- --batch-size 16 \
- --workers 4 \
- --epoch 2150 \
- --use-balanced-weights \
- --use-amp True \
- --opt-level O1 \
- --lr 0.05 \
- --nesterov \
- --gpu-ids 0 \
- --saved-arch-path ../searched_arch
+CUDA_VISIBLE_DEVICES=0,1 python ../train.py \
+  --checkname autodeeplab-dense \
+  --network autodeeplab-dense \
+  --F 70 \
+  --use-oc True \
+  --confidence_map \
+  --dataset cityscapes \
+  --batch-size 16 \
+  --workers 8 \
+  --epoch 4300 \
+  --use-balanced-weights \
+  --use-amp True \
+  --opt-level O1 \
+  --lr 0.05 \
+  --nesterov \
+  --gpu-ids 0,1 \
+  --saved-arch-path ../searched_arch
