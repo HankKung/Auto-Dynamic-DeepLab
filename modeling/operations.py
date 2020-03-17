@@ -162,7 +162,9 @@ class ASPP(nn.Module):
 def normalized_shannon_entropy(x, get_value=False, num_class=19):
     size = (x.shape[2], x.shape[3])
     x = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
+    x = torch.sum(x, dim=1)
     x = x / math.log(num_class)
+    x = -x
     confidence_map = 1.0 - x 
 
     if not get_value:

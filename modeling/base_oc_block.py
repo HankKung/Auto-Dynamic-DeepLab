@@ -14,6 +14,7 @@ import os
 import sys
 import pdb
 import numpy as np
+import torch
 from torch import nn
 from torch.nn import functional as F
 import functools
@@ -83,7 +84,9 @@ class _SelfAttentionBlock(nn.Module):
         context = self.W(context)
         if self.scale > 1:
             context = F.interpolate(context, [h, w], mode='bilinear')
-        if confidence_map != None:
+        if isinstance(context, torch.Tensor):
+            map_h, map_d = (confidence_map.shape[1], confidence_map.shape[2])
+            confidence_map = confidence_map.view(batch_size, 1, map_h, map_d)
             confidence_map = F.interpolate(confidence_map, [h, w], mode='bilinear')
             context = context * confidence_map
         return context

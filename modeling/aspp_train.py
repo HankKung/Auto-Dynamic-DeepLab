@@ -56,7 +56,7 @@ class ASPP_train(nn.Module):
         x4 = self.aspp4_bn(x4)
         x4 = self.relu(x4)
 
-        if self.use_oc:
+        if self.use_oc and isinstance(confidence_map, torch.Tensor):
             x5 = self.context_conv1(x)
             x5 = self.context_bn_1(x5)
             x5 = self.relu(x5)
