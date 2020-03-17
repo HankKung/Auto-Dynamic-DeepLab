@@ -42,7 +42,7 @@ class trainNew(object):
 
         """ Define Dataloader """
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
-        self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
+        self.train_loader, self.val_loader, _, self.nclass = make_data_loader(args, **kwargs)
          
         if args.network == 'searched_dense':
             """ 40_5e_lr_38_31.91  """
@@ -207,11 +207,10 @@ class trainNew(object):
             self.optimizer.zero_grad()
             
             output_1, output_2 = self.model(image)
+            loss = self.criterion(output_1, target) + self.criterion(output_2, target)
+            del output_1, output_2, image
+            torch.cuda.empty_cache()
 
-            loss_1 = self.criterion(output_1, target)
-            loss_2 = self.criterion(output_2, target)
-            loss = loss_1 + loss_2
-            
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
@@ -222,9 +221,9 @@ class trainNew(object):
             train_loss += loss.item()
             if i % 50 == 0:
                 tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
-            del loss_1, loss_2, loss, scaled_loss
+            del loss, scaled_loss
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
-        print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
+        print('[Epoch: %d' % (epoch))
         print('Loss: %.3f' % train_loss)
 
 
@@ -254,7 +253,7 @@ class trainNew(object):
             pred_2 = torch.argmax(output_2, axis=1)
 
             _, confidence_1 = normalized_shannon_entropy(output_1, get_value=True)
-            _, confidence_2 = normalized_shannon_entropy(output_1, get_value=True)
+            _, confidence_2 = normalized_shannon_entropy(output_2, get_value=True)
             confidence_meter_1.update(confidence_1)
             confidence_meter_2.update(confidence_2)
 
@@ -318,7 +317,7 @@ def main():
     parser.add_argument('--use-amp', type=bool, default=False)
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
     parser.add_argument('--sync-bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
-    parser.add_argument('--epochs', type=int, default=None, metavar='N')
+    parser.add_argument('--epochs', type=int, default=2700, metavar='N')
     parser.add_argument('--start_epoch', type=int, default=0)
     parser.add_argument('--batch-size', type=int, default=None, metavar='N')
     parser.add_argument('--test-batch-size', type=int, default=None, metavar='N')
@@ -380,6 +379,7 @@ def main():
     print('Starting Epoch:', new_trainer.args.start_epoch)
     print('Total Epoches:', new_trainer.args.epochs)
     for epoch in range(new_trainer.args.start_epoch, new_trainer.args.epochs):
+        torch.cuda.empty_cache()
         new_trainer.training(epoch)
         if epoch < 5 or epoch % args.eval_interval == (args.eval_interval - 1) \
          or epoch > new_trainer.args.epochs - 100:

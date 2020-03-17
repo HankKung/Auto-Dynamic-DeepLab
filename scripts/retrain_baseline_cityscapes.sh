@@ -3,11 +3,11 @@ CUDA_VISIBLE_DEVICES=0,1 python ../train.py \
   --network autodeeplab-dense \
   --F 20 \
   --use-oc False \
-  --confidence-map False\
+  --confidence-map False \
   --dataset cityscapes \
   --batch-size 16 \
-  --workers 8 \
-  --epoch 4300 \
+  --workers 4 \
+  --epoch 2700 \
   --use-balanced-weights \
   --use-amp True \
   --opt-level O1 \
