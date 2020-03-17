@@ -53,7 +53,6 @@ class Cell_baseline(nn.Module):
 
 
     def forward(self, prev_prev_input, prev_input):
-
         s1 = prev_input        
         if self.downup_sample == 1:
             feature_size_h = self.scale_dimension(
@@ -72,7 +71,6 @@ class Cell_baseline(nn.Module):
         s0 = self.pre_preprocess(s0)
         
         states = [s0, s1]
-
         offset = 0
         ops_index = 0
         for i in range(self.B):
@@ -102,9 +100,7 @@ class Model_1_baseline (nn.Module):
                 F=20,
                 B=5,
                 low_level_layer=1):
-
         super(Model_1_baseline, self).__init__()
-        
         self.cells = nn.ModuleList()
         self.model_1_network = network_arch
         self.cell_arch = torch.from_numpy(cell_arch)
@@ -307,7 +303,10 @@ class Model_2_baseline (nn.Module):
                                 )
         
         self.aspp = ASPP_train(F * B * fm[self.model_2_network[-1]], 
-                                     512, BatchNorm, mult=mult)
+                                256,
+                                BatchNorm,
+                                mult=mult)
+
         self.decoder = Decoder(num_classes, BatchNorm)
         self._init_weight()
 

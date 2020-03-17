@@ -1,9 +1,9 @@
 CUDA_VISIBLE_DEVICES=0,1 python ../train.py \
   --checkname autodeeplab-dense \
   --network autodeeplab-dense \
-  --F 70 \
-  --use-oc True \
-  --confidence_map \
+  --F 20 \
+  --use-oc False \
+  --confidence-map False\
   --dataset cityscapes \
   --batch-size 16 \
   --workers 8 \

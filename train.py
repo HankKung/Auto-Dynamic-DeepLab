@@ -17,7 +17,6 @@ from utils.metrics import Evaluator
 from utils.copy_state_dict import copy_state_dict
 from utils.eval_utils import AverageMeter
 
-
 from modeling.baseline_model import *
 from modeling.dense_model import *
 from modeling.operations import normalized_shannon_entropy
@@ -25,7 +24,6 @@ from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.sync_batchnorm.replicate import patch_replication_callback
 
 from apex import amp
-    
 torch.backends.cudnn.benchmark = True
 
 class trainNew(object):
@@ -207,8 +205,9 @@ class trainNew(object):
                 image, target = image.cuda(), target.cuda()
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-
+            
             output_1, output_2 = self.model(image)
+
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
             loss = loss_1 + loss_2
@@ -281,6 +280,7 @@ class trainNew(object):
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.test_batch_size + image.data.shape[0]))
         print("classifier_1_mIoU:{}, classifier_2_mIoU: {}".format(mIoU_1, mIoU_2))
+        print("classifier_1_confidence:{}, classifier_2_confidence: {}".format(mean_confidence_1, mean_confidence_2))
         print('Loss: %.3f' % test_loss)
 
         new_pred = (mIoU_1 + mIoU_2)/2
