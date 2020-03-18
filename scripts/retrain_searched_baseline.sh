@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0,1 python ../train.py \
  --dataset cityscapes \
  --batch-size 16 \
  --workers 8 \
- --epoch 2150 \
+ --epoch 2700 \
  --use-balanced-weights \
  --use-amp \
  --opt-level O1 \

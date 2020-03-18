@@ -5,9 +5,9 @@ CUDA_VISIBLE_DEVICES=0,1 python ../train.py \
   --use-oc False \
   --confidence-map False \
   --dataset cityscapes \
-  --batch-size 16 \
+  --batch-size 12 \
   --workers 4 \
-  --epoch 2700 \
+  --epoch 2450 \
   --use-balanced-weights \
   --use-amp True \
   --opt-level O1 \

@@ -43,7 +43,19 @@ class trainNew(object):
         """ Define Dataloader """
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
         self.train_loader, self.val_loader, _, self.nclass = make_data_loader(args, **kwargs)
-         
+
+        """ Define Criterion """
+        """ whether to use class balanced weights """
+        if args.use_balanced_weights:
+            classes_weights_path = os.path.join(Path.db_root_dir(args.dataset), args.dataset + '_classes_weights.npy')
+            if os.path.isfile(classes_weights_path):
+                weight = np.load(classes_weights_path)
+            else:
+                weight = calculate_weigths_labels(args.dataset, self.train_loader, self.nclass)
+            weight = torch.from_numpy(weight.astype(np.float32))
+        else:
+            weight = None
+        self.criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255).cuda()
         if args.network == 'searched_dense':
             """ 40_5e_lr_38_31.91  """
             # cell_path_1 = os.path.join(args.saved_arch_path, '40_5e_38_lr', 'genotype_1.npy')
@@ -101,19 +113,7 @@ class trainNew(object):
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum,
                                     weight_decay=args.weight_decay, nesterov=args.nesterov)
 
-        """ Define Criterion """
-        """ whether to use class balanced weights """
-        if args.use_balanced_weights:
-            classes_weights_path = os.path.join(Path.db_root_dir(args.dataset), args.dataset + '_classes_weights.npy')
-            if os.path.isfile(classes_weights_path):
-                weight = np.load(classes_weights_path)
-            else:
-                weight = calculate_weigths_labels(args.dataset, self.train_loader, self.nclass)
-            weight = torch.from_numpy(weight.astype(np.float32))
-        else:
-            weight = None
 
-        self.criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255).cuda()
         self.model, self.optimizer = model, optimizer
 
         """ Define Evaluator """
@@ -193,7 +193,6 @@ class trainNew(object):
         if args.ft:
             args.start_epoch = 0
 
-
     def training(self, epoch):
         train_loss = 0.0
         self.model.train()
@@ -208,8 +207,6 @@ class trainNew(object):
             
             output_1, output_2 = self.model(image)
             loss = self.criterion(output_1, target) + self.criterion(output_2, target)
-            del output_1, output_2, image
-            torch.cuda.empty_cache()
 
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
