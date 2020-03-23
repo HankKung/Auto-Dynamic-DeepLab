@@ -198,16 +198,18 @@ class trainNew(object):
         self.model.train()
         tbar = tqdm(self.train_loader)
         num_img_tr = len(self.train_loader)
+        base_iter = epoch * num_img_tr 
+        total_iter = float(num_img_tr * self.args.epochs)
         for i, sample in enumerate(tbar):
+            iter_rate = pow((1.0 * (base_iter + i) / total_iter), 0.9)
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            
-            output_1, output_2 = self.model(image)
+    
+            output_1, output_2 = self.model(image, iter_rate)
             loss = self.criterion(output_1, target) + self.criterion(output_2, target)
-
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()

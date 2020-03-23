@@ -63,7 +63,7 @@ class _SelfAttentionBlock(nn.Module):
         nn.init.constant(self.W[0].bias, 0)
 
 
-    def forward(self, x, confidence_map=None):
+    def forward(self, x, confidence_map=None, iter_rate=1.0):
         batch_size, h, w = x.size(0), x.size(2), x.size(3)
         if self.scale > 1:
             x = self.pool(x)
@@ -88,8 +88,8 @@ class _SelfAttentionBlock(nn.Module):
             map_h, map_d = (confidence_map.shape[1], confidence_map.shape[2])
             confidence_map = confidence_map.view(batch_size, 1, map_h, map_d)
             confidence_map = F.interpolate(confidence_map, [h, w], mode='bilinear')
-            context = context * confidence_map
-            context = F.softmax(context, dim=-1)
+            confidence_map = F.softmax(confidence_map, dim=-1)
+            context = (1.0 - iter_rate) * context + iter_rate * context * confidence_map 
         return context
 
 
@@ -130,7 +130,7 @@ class BaseOC_Context_Module(nn.Module):
                                     size,
                                     BatchNorm)
         
-    def forward(self, feats, confidence_map=None):
+    def forward(self, feats, confidence_map=None, iter_rate=1.0):
         priors = [stage(feats, confidence_map) for stage in self.stages]
         context = priors[0]
         for i in range(1, len(priors)):

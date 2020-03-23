@@ -41,7 +41,7 @@ class ASPP_train(nn.Module):
         self.conv1 = conv(depth * 5, out, kernel_size=1, stride=1, bias=False)
         self.bn1 = BatchNorm(out, eps=eps, momentum=momentum)
 
-    def forward(self, x, confidence_map=None):
+    def forward(self, x, confidence_map=None, iter_rate=1.0):
         x = self.relu_non_inplace(x)
         x1 = self.aspp1(x)
         x1 = self.aspp1_bn(x1)
@@ -60,7 +60,7 @@ class ASPP_train(nn.Module):
             x5 = self.context_conv1(x)
             x5 = self.context_bn_1(x5)
             x5 = self.relu(x5)
-            x5 = self.context(x5, confidence_map)
+            x5 = self.context(x5, confidence_map, iter_rate)
             x5 = self.context_bn_2(x5)
             x5 = self.relu(x5)
         else:
