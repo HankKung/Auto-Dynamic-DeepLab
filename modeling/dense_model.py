@@ -223,8 +223,6 @@ class Model_1 (nn.Module):
         stem0 = self.stem1(stem)
         stem1 = self.stem2(stem0)
         two_last_inputs = [stem0, stem1]
-        del stem, stem0, stem1
-        torch.cuda.empty_cache()
         dense_feature_map = []
 
         for i in range(self.num_model_1_layers):       
@@ -389,8 +387,6 @@ class Model_2 (nn.Module):
             else:
                 x = self.cells[i](dense_feature_map[:-1], x)
 
-        del feature_map, dense_feature_map
-        torch.cuda.empty_cache()
         if self.args.confidence_map:
             x = self.aspp(x, confidence_map, iter_rate)
         else:

@@ -220,7 +220,6 @@ class trainNew(object):
             train_loss += loss.item()
             if i % 50 == 0:
                 tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
-            del loss, scaled_loss
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d' % (epoch))
         print('Loss: %.3f' % train_loss)
