@@ -89,7 +89,10 @@ class _SelfAttentionBlock(nn.Module):
             confidence_map = confidence_map.view(batch_size, 1, map_h, map_d)
             confidence_map = F.interpolate(confidence_map, [h, w], mode='bilinear')
             confidence_map = F.softmax(confidence_map, dim=-1)
-            context = (1.0 - iter_rate) * context + iter_rate * context * confidence_map 
+            if iter_rate == 1.0:
+                context = context * confidence_map 
+            else:
+                context = (1.0 - iter_rate) * context + iter_rate * context * confidence_map 
         return context
 
 
