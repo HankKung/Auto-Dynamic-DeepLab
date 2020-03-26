@@ -352,7 +352,9 @@ class Model_2 (nn.Module):
         if self.model_2_network[-1] == 1:
             mult = 2
         elif self.model_2_network[-1] == 2:
-            mult =1
+            mult = 1
+        elif self.model_2_network[-1] == 3:
+            mult = 0.5
 
         self.low_level_conv = nn.Sequential(
                                     nn.ReLU(),

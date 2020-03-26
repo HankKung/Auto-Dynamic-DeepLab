@@ -1,14 +1,17 @@
 CUDA_VISIBLE_DEVICES=0 python ../train.py \
---checkname searched_dense \
---network searched_dense \
---batch-size 16 \
---workers 16 \
---dataset cityscapes \
---use-amp \
---opt-level O1 \
---use-balanced-weights \
---epoch 2150 \
---lr 0.05 \
---nesterov \
---gpu-ids 0 \
---saved-arch-path ../searched_arch/
+  --checkname searched-dense \
+  --network searched-dense \
+  --F 20 \
+  --use-oc False \
+  --confidence-map False \
+  --dataset cityscapes \
+  --batch-size 12 \
+  --workers 4 \
+  --epoch 2450 \
+  --use-balanced-weights \
+  --use-amp True \
+  --opt-level O1 \
+  --lr 0.05 \
+  --nesterov \
+  --gpu-ids 0 \
+  --saved-arch-path ../searched_arch

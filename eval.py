@@ -35,12 +35,12 @@ class Evaluation(object):
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
         _, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
-        if args.network == 'searched_dense':
+        if args.network == 'searched-dense':
             """ 40_5e_lr_38_31.91  """
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
-            network_arch = [0, 1, 2, 3, 2, 2, 2, 2, 1, 2, 3, 2]
-            low_level_layer = 0
+            network_arch = [0, 1, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3]
+            low_level_layer = 2
 
             model = Model_2(network_arch,
                             cell_arch,
@@ -48,7 +48,7 @@ class Evaluation(object):
                             args,
                             low_level_layer)
 
-        elif args.network == 'searched_baseline':
+        elif args.network == 'searched-baseline':
             cell_path = os.path.join(args.saved_arch_path, 'searched_baseline', 'genotype.npy')
             cell_arch = np.load(cell_path)
             network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
@@ -257,7 +257,8 @@ class Evaluation(object):
 def main():
     parser = argparse.ArgumentParser(description="Eval")
     """ model setting """
-    parser.add_argument('--network', type=str, default='searched_dense', choices=['searched_dense', 'searched_baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
+    parser.add_argument('--network', type=str, default='searched-dense', \
+        choices=['searched-dense', 'searched-baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
     parser.add_argument('--F', type=int, default=20)
     parser.add_argument('--B', type=int, default=5)
@@ -275,6 +276,7 @@ def main():
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes')
     parser.add_argument('--workers', type=int, default=1, metavar='N')
+    parser.add_argument('--joint', type=bool, default=False)
 
 
     """ training config """

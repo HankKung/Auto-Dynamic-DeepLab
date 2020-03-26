@@ -56,7 +56,7 @@ class trainNew(object):
         else:
             weight = None
         self.criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255).cuda()
-        if args.network == 'searched_dense':
+        if args.network == 'searched-dense':
             """ 40_5e_lr_38_31.91  """
             # cell_path_1 = os.path.join(args.saved_arch_path, '40_5e_38_lr', 'genotype_1.npy')
             # cell_path_2 = os.path.join(args.saved_arch_path, '40_5e_38_lr','genotype_2.npy')
@@ -66,8 +66,12 @@ class trainNew(object):
 
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
-            network_arch = [0, 1, 2, 3, 2, 2, 2, 2, 1, 2, 3, 2]
-            low_level_layer = 0
+            # network_arch = [0, 1, 2, 3, 2, 2, 2, 2, 1, 2, 3, 2]
+            # low_level_layer = 0
+
+            # batch_2_20f_513_crop_80e_3e-3awd_4e-4wd_1e-3alr
+            network_arch = [0, 1, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3]
+            low_level_layer = 2
 
             model = Model_2(network_arch,
                             cell_arch,
@@ -75,7 +79,7 @@ class trainNew(object):
                             args,
                             low_level_layer)
 
-        elif args.network == 'searched_baseline':
+        elif args.network == 'searched-baseline':
             cell_path_1 = os.path.join(args.saved_arch_path, 'searched_baseline', 'genotype_1.npy')
             cell_path_2 = os.path.join(args.saved_arch_path, 'searched_baseline','genotype_2.npy')
             cell_arch_1 = np.load(cell_path_1)
@@ -296,9 +300,9 @@ def main():
     parser = argparse.ArgumentParser(description="Dynamic DeepLab Training")
 
     """ model setting """
-    parser.add_argument('--network', type=str, default='searched_dense', \
-        choices=['searched_dense', 'searched_baseline', \
-        'autodeeplab-baseline', 'autodeeplab-dense', 'autodeeplab', 'supernet'])
+    parser.add_argument('--network', type=str, default='searched-dense', \
+        choices=['searched-dense', 'searched-baseline', \
+        'autodeeplab-baseline', 'autodeeplab-dense', 'autodeeplab'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
     parser.add_argument('--F', type=int, default=20)
     parser.add_argument('--B', type=int, default=5)
@@ -309,7 +313,7 @@ def main():
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes', choices=['pascal', 'coco', 'cityscapes'], help='dataset name (default: pascal)')
     parser.add_argument('--workers', type=int, default=4, metavar='N', help='dataloader threads')
-
+    parser.add_argument('--joint', type=bool, default=False)
 
     """ training config """
     parser.add_argument('--use-amp', type=bool, default=False)
