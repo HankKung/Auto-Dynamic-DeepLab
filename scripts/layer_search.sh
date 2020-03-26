@@ -1,14 +1,15 @@
-CUDA_VISIBLE_DEVICES=1 python ../search_layer.py \
+CUDA_VISIBLE_DEVICES=0 python ../search_layer.py \
  --checkname layer_search \
  --network path_dense_supernet \
  --F 20 \
+ --joint True \
  --batch-size 2 \
  --workers 2 \
  --dataset cityscapes \
- --alpha-epoch 90 \
- --epoch 100 \
+ --alpha-epoch 100 \
+ --epoch 120 \
  --lr 0.025 \
  --min-lr 0.001 \
- --arch-lr 3e-3 \
+ --arch-lr 1e-3 \
  --weight-decay 3e-4 \
- --arch-weight-decay 1e-3
+ --arch-weight-decay 3e-3

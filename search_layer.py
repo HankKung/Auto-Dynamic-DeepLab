@@ -56,7 +56,11 @@ class Trainer(object):
         self.opt_level = args.opt_level
 
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last':True, 'drop_last': True}
-        self.train_loaderA, self.train_loaderB, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
+        if self.args.join:
+            self.train_loaderA, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
+        else:
+            self.train_loaderA, self.train_loaderB, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
+
         if args.use_balanced_weights:
             classes_weights_path = os.path.join(Path.db_root_dir(args.dataset), args.dataset+'_classes_weights.npy')
             if os.path.isfile(classes_weights_path):
@@ -186,7 +190,6 @@ class Trainer(object):
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
             loss = loss_1 + loss_2
-
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
@@ -206,19 +209,15 @@ class Trainer(object):
                 arch_loss_1 = self.criterion(output_search_1, target_search)
                 arch_loss_2 = self.criterion(output_search_2, target_search)
                 arch_loss = arch_loss_1 + arch_loss_2
-                
                 if self.use_amp:
                     with amp.scale_loss(arch_loss, self.architect_optimizer) as arch_scaled_loss:
                        arch_scaled_loss.backward()
                 else:
                     arch_loss.backward()
-
                 self.architect_optimizer.step()
                 search_loss += arch_loss.item()
                 
-
             train_loss += loss.item()
-            
             tbar.set_description('Train loss: %.3f --Search loss: %.3f' \
                 % (train_loss/(i+1), search_loss/(i+1)))
 
@@ -226,7 +225,56 @@ class Trainer(object):
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
 
-        self.decoder_save(epoch)
+        self.decoder_save(epoch, miou=None, evaluation=False)
+
+
+    def training_joint(self, epoch):
+        train_loss = 0.0
+        search_loss = 0.0
+        self.model.train()
+        tbar = tqdm(self.train_loaderA)
+        num_img_tr = len(self.train_loaderA)
+        for i, sample in enumerate(tbar):
+            image, target = sample['image'], sample['label']
+            if self.args.cuda:
+                image, target = image.cuda(), target.cuda()
+            self.scheduler(self.optimizer, i, epoch, self.best_pred)
+            self.optimizer.zero_grad()
+            output_1, output_2 = self.model(image)
+            loss_1 = self.criterion(output_1, target)
+            loss_2 = self.criterion(output_2, target)
+            loss = loss_1 + loss_2
+            if self.use_amp:
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
+            self.optimizer.step()
+            
+            if epoch >= self.args.alpha_epoch:
+
+                self.architect_optimizer.zero_grad()
+                output_search_1, output_search_2 = self.model(image)
+                arch_loss_1 = self.criterion(output_search_1, target)
+                arch_loss_2 = self.criterion(output_search_2, target)
+                arch_loss = arch_loss_1 + arch_loss_2
+                if self.use_amp:
+                    with amp.scale_loss(arch_loss, self.architect_optimizer) as arch_scaled_loss:
+                       arch_scaled_loss.backward()
+                else:
+                    arch_loss.backward()
+                self.architect_optimizer.step()
+                search_loss += arch_loss.item()
+                
+            train_loss += loss.item()
+            tbar.set_description('Train loss: %.3f --Search loss: %.3f' \
+                % (train_loss/(i+1), search_loss/(i+1)))
+
+        self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
+        print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
+        print('Loss: %.3f' % train_loss)
+
+        self.decoder_save(epoch, miou=None, evaluation=False)
 
 
     def validation(self, epoch):
@@ -341,6 +389,7 @@ def main():
 
     """ Dataset Setting """
     parser.add_argument('--dataset', type=str, default='cityscapes', choices=['pascal', 'coco', 'cityscapes', 'kd'])
+    parser.add_argument('--joint', type=bool, default=False)
     parser.add_argument('--use-sbd', action='store_true', default=False, help='whether to use SBD dataset (default: True)')
     parser.add_argument('--load-parallel', type=int, default=0)
     parser.add_argument('--workers', type=int, default=2, metavar='N', help='dataloader threads')
@@ -358,7 +407,7 @@ def main():
     parser.add_argument('--weight-decay', type=float, default=5e-4, metavar='M', help='w-decay (default: 5e-4)')
     parser.add_argument('--arch-weight-decay', type=float, default=1e-3, metavar='M', help='w-decay (default: 5e-4)')
     parser.add_argument('--nesterov', action='store_true', default=False, help='whether use nesterov (default: False)')
-    parser.add_argument('--use-amp', action='store_true', default=False) 
+    parser.add_argument('--use-amp', type=bool, default=False) 
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
 
 
@@ -402,12 +451,14 @@ def main():
     trainer = Trainer(args)
     print('Starting Epoch:', trainer.args.start_epoch)
     print('Total Epoches:', trainer.args.epochs)
-    for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
-        trainer.training(epoch)
-        if epoch >= trainer.args.epochs - 2 and not trainer.args.no_val \
-        and epoch % args.eval_interval == (args.eval_interval - 1) or epoch == trainer.args.alpha_epoch+1:
+    for epoch in range(args.start_epoch, args.epochs):
+        if args.joint:
+            trainer.training_joint(epoch)
+        else:
+            trainer.training(epoch)
+        if epoch >= args.epochs - 5 and not targs.no_val \
+        and epoch % args.eval_interval == (args.eval_interval - 1) or epoch == args.alpha_epoch+1:
             trainer.validation(epoch)
-
     trainer.writer.close()
 
 if __name__ == "__main__":
