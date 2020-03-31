@@ -2,7 +2,6 @@ CUDA_VISIBLE_DEVICES=0 python ../search_layer.py \
  --checkname layer_search \
  --network path_dense_supernet \
  --F 20 \
- --joint True \
  --batch-size 2 \
  --workers 2 \
  --dataset cityscapes \

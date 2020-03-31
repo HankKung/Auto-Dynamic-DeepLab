@@ -15,24 +15,18 @@ def make_data_loader(args, **kwargs):
         return train_loader, val_loader, test_loader, num_class
 
     elif args.dataset == 'cityscapes':
-        if 'supernet' in args.network and args.joint != True:
+        if 'supernet' in args.network:
             train_set1, train_set2 = cityscapes.twoTrainSeg(args)
             num_class = train_set1.NUM_CLASSES
             train_loader1 = DataLoader(train_set1, batch_size=args.batch_size, shuffle=True, **kwargs)
             train_loader2 = DataLoader(train_set2, batch_size=args.batch_size, shuffle=True, **kwargs)
-        elif 'supernet' in args.network and args.joint:
-            train_set = cityscapes.CityscapesSegmentation(args, split='train', search=True)
-            num_class = train_set.NUM_CLASSES
-            train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, **kwargs)
         else:
             train_set = cityscapes.CityscapesSegmentation(args, split='train')
             num_class = train_set.NUM_CLASSES
             train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, **kwargs)
 
-        if 'supernet' in args.network and args.joint != True:
-            val_set = cityscapes.CityscapesSegmentation(args, split='val', search=True)
-            test_set = cityscapes.CityscapesSegmentation(args, split='test', search=True)
-        elif args.network != None:
+
+        if args.network != None:
             val_set = cityscapes.CityscapesSegmentation(args, split='val')
             test_set = cityscapes.CityscapesSegmentation(args, split='test')
         else:
@@ -42,7 +36,7 @@ def make_data_loader(args, **kwargs):
         test_loader = DataLoader(test_set, batch_size=args.test_batch_size, shuffle=False, **kwargs)
 
 
-        if 'supernet' in args.network and args.joint != True:
+        if 'supernet' in args.network:
             return train_loader1, train_loader2, val_loader, test_loader, num_class
         else:
             return train_loader, val_loader, test_loader, num_class
