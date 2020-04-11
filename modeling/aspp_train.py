@@ -4,10 +4,9 @@ import torch.nn.functional as F
 
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.operations import ReLUConvBN
-from modeling.base_oc_block import BaseOC_Context_Module
 
 class ASPP_train(nn.Module):
-    def __init__(self, C, out, BatchNorm, depth=256, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1, use_oc=False):
+    def __init__(self, C, out, BatchNorm, depth=256, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1, use_map=False):
         super(ASPP_train, self).__init__()
         self._C = C
         self._depth = depth
@@ -24,24 +23,23 @@ class ASPP_train(nn.Module):
                                dilation=int(18*mult), padding=int(18*mult), bias=False)
         self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
 
-        if use_oc:
-            self.context_conv1 = conv(C, depth, kernel_size=3,  padding=1, dilation=1, bias=False)
-            self.context = BaseOC_Context_Module(in_channels=depth, out_channels=depth, key_channels=depth//2, \
-                                          value_channels=depth, BatchNorm=BatchNorm, sizes=([2])) 
-            self.context_bn_1 = BatchNorm(depth, eps=eps, momentum=momentum)
-            self.context_bn_2 = BatchNorm(depth, eps=eps, momentum=momentum)
+        if self.use_map:
+            self.aspp6 = conv(C, depth, kernel_size=3, stride=1, bias=False)
+            self.aspp6_bn = BatchNorm(depth, eps=eps, momentum=momentum)
+            self.conv1 = conv(depth * 6, out, kernel_size=1, stride=1, bias=False)
+        else: 
+            self.conv1 = conv(depth * 5, out, kernel_size=1, stride=1, bias=False)
 
+        self.bn1 = BatchNorm(out, eps=eps, momentum=momentum)
         self.aspp1_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp2_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp3_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp4_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp5_bn = BatchNorm(depth, eps=eps, momentum=momentum)
 
-
-        self.conv1 = conv(depth * 5, out, kernel_size=1, stride=1, bias=False)
-        self.bn1 = BatchNorm(out, eps=eps, momentum=momentum)
-
     def forward(self, x, confidence_map=None, iter_rate=1.0):
+        batch_size, h, w = x.size(0), x.size(2), x.size(3)
+
         x = self.relu_non_inplace(x)
         x1 = self.aspp1(x)
         x1 = self.aspp1_bn(x1)
@@ -55,22 +53,26 @@ class ASPP_train(nn.Module):
         x4 = self.aspp4(x)
         x4 = self.aspp4_bn(x4)
         x4 = self.relu(x4)
-
-        if self.use_oc and isinstance(confidence_map, torch.Tensor):
-            x5 = self.context_conv1(x)
-            x5 = self.context_bn_1(x5)
-            x5 = self.relu(x5)
-            x5 = self.context(x5, confidence_map, iter_rate)
-            x5 = self.context_bn_2(x5)
-            x5 = self.relu(x5)
-        else:
-            x5 = self.global_pooling(x)
-            x5 = self.aspp5(x5)
-            x5 = self.aspp5_bn(x5)
-            x5 = self.relu(x5)
-            x5 = nn.Upsample((x.shape[2], x.shape[3]), mode='bilinear',
+        x5 = self.global_pooling(x)
+        x5 = self.aspp5(x5)
+        x5 = self.aspp5_bn(x5)
+        x5 = self.relu(x5)
+        x5 = nn.Upsample((x.shape[2], x.shape[3]), mode='bilinear',
                              align_corners=True)(x5)
-        x = torch.cat((x1, x2, x3, x4, x5), 1)
+
+        if self.use_map and isinstance(confidence_map, torch.Tensor):
+            map_h, map_d = (confidence_map.shape[1], confidence_map.shape[2])
+            confidence_map = confidence_map.view(batch_size, 1, map_h, map_d)
+            confidence_map = F.interpolate(confidence_map, [h, w], mode='bilinear')
+            confidence_map = F.softmax(confidence_map, dim=-1)
+            if iter_rate == 1.0:
+                x6 = x * confidence_map 
+            else:
+                x6 = (1.0 - iter_rate) * x + iter_rate * x * confidence_map
+            x = torch.cat((x1, x2, x3, x4, x5, x6), 1)
+
+        else:
+            x = torch.cat((x1, x2, x3, x4, x5), 1)
 
         x = self.conv1(x)
         x = self.bn1(x)
