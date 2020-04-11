@@ -24,6 +24,8 @@ from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.sync_batchnorm.replicate import patch_replication_callback
 
 from apex import amp
+from ptflops import get_model_complexity_info
+
 torch.backends.cudnn.benchmark = True
 
 class trainNew(object):
@@ -296,6 +298,14 @@ class trainNew(object):
             }, is_best)
 
 
+    def mac(self):
+        self.model.eval()
+        with torch.no_grad():
+            flops, params = get_model_complexity_info(self.model, (3, 1025, 2049), as_strings=True, print_per_layer_stat=False)
+            print('{:<30}  {:<8}'.format('Computational complexity: ', flops))
+            print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Dynamic DeepLab Training")
 
@@ -378,8 +388,10 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     new_trainer = trainNew(args)
+    evaluation.mac()
     print('Starting Epoch:', new_trainer.args.start_epoch)
     print('Total Epoches:', new_trainer.args.epochs)
+    
     for epoch in range(new_trainer.args.start_epoch, new_trainer.args.epochs):
         torch.cuda.empty_cache()
         new_trainer.training(epoch)

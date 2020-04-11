@@ -267,16 +267,13 @@ def main():
 
 
     """ dynamic inference"""
-    parser.add_argument('--entropy', type=bool, default=False)
     parser.add_argument('--confidence_mode', type=str, default='avg', choices=['avg', 'max'])
-    parser.add_argument('--pool_threshold', type=float, default=None)
     parser.add_argument('--entropy_threshold', type=float, default=None)
 
 
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes')
     parser.add_argument('--workers', type=int, default=1, metavar='N')
-    parser.add_argument('--joint', type=bool, default=False)
 
 
     """ training config """
@@ -322,9 +319,9 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     evaluation = Evaluation(args)
-    evaluation.testing_entropy()
-    # evaluation.mac()
-    #evaluation.validation()
+    # evaluation.testing_entropy()
+    evaluation.mac()
+    evaluation.validation()
     #evaluation.writer.close()
 
 if __name__ == "__main__":
