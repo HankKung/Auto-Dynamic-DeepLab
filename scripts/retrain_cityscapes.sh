@@ -2,8 +2,7 @@ CUDA_VISIBLE_DEVICES=0 python ../train.py \
   --checkname searched-dense \
   --network searched-dense \
   --F 20 \
-  --use-oc False \
-  --confidence-map False \
+  --use-map False \
   --dataset cityscapes \
   --batch-size 12 \
   --workers 4 \

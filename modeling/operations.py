@@ -166,6 +166,10 @@ def normalized_shannon_entropy(x, get_value=False, num_class=19):
     x = -x
     confidence_map = 1.0 - x 
 
+    batch_size = confidence_map.shape[0]
+    map_h, map_d = (confidence_map.shape[1], confidence_map.shape[2])
+    confidence_map = confidence_map.view(batch_size, 1, map_h, map_d)
+
     if not get_value:
       return confidence_map
 

@@ -365,7 +365,7 @@ class Model_2 (nn.Module):
                                 256,
                                 BatchNorm,
                                 mult=mult,
-                                use_oc=self.args.use_oc)
+                                use_map=self.args.use_map)
         self._init_weight()
 
 
@@ -377,7 +377,7 @@ class Model_2 (nn.Module):
         y1 = self.aspp(x)
         y1 = self.decoder(y1, low_level, size)
 
-        if self.args.use_oc and self.args.confidence_map:
+        if self.args.use_map:
             confidence_map = normalized_shannon_entropy(y1, get_value=False)
 
         for i in range(self.num_model_2_layers):
@@ -389,12 +389,12 @@ class Model_2 (nn.Module):
             else:
                 x = self.cells[i](dense_feature_map[:-1], x)
 
-        if self.args.confidence_map:
+        if self.args.use_map:
             x = self.aspp(x, confidence_map, iter_rate)
         else:
             x = self.aspp(x)
         x = self.decoder(x, low_level, size)     
-
+        x = y1 * (1 - confidence_map) + x * confidence_map
         return y1, x
 
 
@@ -419,7 +419,7 @@ class Model_2 (nn.Module):
             else:
                 x = self.cells[i](dense_feature_map[:-1], x)
 
-        if self.args.confidence_map:
+        if self.args.use_map:
             x = self.aspp(x, confidence_map)
         else:
             x = self.aspp(x)
@@ -437,7 +437,7 @@ class Model_2 (nn.Module):
         y1 = self.aspp(x)
         y1 = self.decoder(y1, low_level, size)     
 
-        if self.args.use_oc and self.args.confidence_map:
+        if self.args.use_map:
             confidence_map, confidence = normalized_shannon_entropy(y1, get_value=False)
 
         torch.cuda.synchronize()
@@ -452,7 +452,7 @@ class Model_2 (nn.Module):
             else:
                 x = self.cells[i](dense_feature_map[:-1], x)
 
-        if self.args.confidence_map:
+        if self.args.usee_map:
             x = self.aspp(x, confidence_map)
         else:
             x = self.aspp(x)

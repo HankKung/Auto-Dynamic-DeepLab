@@ -316,8 +316,7 @@ def main():
     parser.add_argument('--num_model_1_layers', type=int, default=6)
     parser.add_argument('--F', type=int, default=20)
     parser.add_argument('--B', type=int, default=5)
-    parser.add_argument('--use-oc', type=bool, default=False)
-    parser.add_argument('--confidence-map', type=bool, default=False)
+    parser.add_argument('--use-map', type=bool, default=False)
 
 
     """ dataset config"""
@@ -388,7 +387,7 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     new_trainer = trainNew(args)
-    evaluation.mac()
+    trainNew.mac()
     print('Starting Epoch:', new_trainer.args.start_epoch)
     print('Total Epoches:', new_trainer.args.epochs)
     
