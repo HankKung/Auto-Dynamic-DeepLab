@@ -377,8 +377,11 @@ class Model_2 (nn.Module):
         y1 = self.aspp(x)
         y1 = self.decoder(y1, low_level, size)
 
-        if self.args.use_map:
-            confidence_map = normalized_shannon_entropy(y1, get_value=False)
+        # if self.args.use_map:
+        confidence_map = normalized_shannon_entropy(y1, get_value=False)
+        min_v = torch.min(confidence_map)
+        range_v = torch.max(confidence_map) - min_v
+        normalized_confidence_map = (confidence_map - min_v) / range_v
 
         for i in range(self.num_model_2_layers):
             if i < self.num_model_2_layers - 2:
@@ -390,11 +393,11 @@ class Model_2 (nn.Module):
                 x = self.cells[i](dense_feature_map[:-1], x)
 
         if self.args.use_map:
-            x = self.aspp(x, confidence_map, iter_rate)
+            x = self.aspp(x, normalized_confidence_map, iter_rate)
         else:
             x = self.aspp(x)
         x = self.decoder(x, low_level, size)     
-        x = y1 * (1 - confidence_map) + x * confidence_map
+        x = x * (1 - normalized_confidence_map) + y1 * normalized_confidence_map
         return y1, x
 
 

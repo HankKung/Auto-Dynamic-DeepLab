@@ -10,7 +10,7 @@ class ASPP_train(nn.Module):
         super(ASPP_train, self).__init__()
         self._C = C
         self._depth = depth
-        self.use_oc = use_oc
+        self.use_map = use_map
         self.global_pooling = nn.AdaptiveAvgPool2d(1)
         self.relu = nn.ReLU(inplace=True)
         self.relu_non_inplace = nn.ReLU()
@@ -60,19 +60,19 @@ class ASPP_train(nn.Module):
         x5 = nn.Upsample((x.shape[2], x.shape[3]), mode='bilinear',
                              align_corners=True)(x5)
 
-        if self.use_map and isinstance(confidence_map, torch.Tensor):
-            map_h, map_d = (confidence_map.shape[1], confidence_map.shape[2])
-            confidence_map = confidence_map.view(batch_size, 1, map_h, map_d)
-            confidence_map = F.interpolate(confidence_map, [h, w], mode='bilinear')
-            confidence_map = F.softmax(confidence_map, dim=-1)
-            if iter_rate == 1.0:
-                x6 = x * confidence_map 
-            else:
-                x6 = (1.0 - iter_rate) * x + iter_rate * x * confidence_map
-            x = torch.cat((x1, x2, x3, x4, x5, x6), 1)
+        # if self.use_map and isinstance(confidence_map, torch.Tensor):
+        #     map_h, map_d = (confidence_map.shape[1], confidence_map.shape[2])
+        #     confidence_map = confidence_map.view(batch_size, 1, map_h, map_d)
+        #     confidence_map = F.interpolate(confidence_map, [h, w], mode='bilinear')
+        #     confidence_map = F.softmax(confidence_map, dim=-1)
+        #     if iter_rate == 1.0:
+        #         x6 = x * confidence_map 
+        #     else:
+        #         x6 = (1.0 - iter_rate) * x + iter_rate * x * confidence_map
+        #     x = torch.cat((x1, x2, x3, x4, x5, x6), 1)
 
-        else:
-            x = torch.cat((x1, x2, x3, x4, x5), 1)
+        # else:
+        x = torch.cat((x1, x2, x3, x4, x5), 1)
 
         x = self.conv1(x)
         x = self.bn1(x)

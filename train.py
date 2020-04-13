@@ -387,7 +387,7 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     new_trainer = trainNew(args)
-    trainNew.mac()
+    new_trainer.mac()
     print('Starting Epoch:', new_trainer.args.start_epoch)
     print('Total Epoches:', new_trainer.args.epochs)
     
