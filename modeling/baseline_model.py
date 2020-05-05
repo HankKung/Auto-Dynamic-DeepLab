@@ -327,17 +327,11 @@ class Model_2_baseline (nn.Module):
 
         return y1, y2
 
-    def testing_entropy(self, x, entropy=False, confidence_mode=False, pool_threshold=False, entropy_threshold=False):
-        earlier_exit = False
-
-        _, _, x = self.model_1(x)
-        avg_confidence = global_pooling(x, mode='avg')
-        max_confidence = global_pooling(x, mode='max')
-
-        return x, avg_confidence, max_confidence
-
 
     def dynamic_inference(self, x, threshold=False):
+        torch.cuda.synchronize()
+        tic = time.perf_counter()
+
         size = (x.shape[2], x.shape[3])
         low_level, two_last_inputs, y1 = self.model_1(x)
         low_level = self.low_level_conv(low_level)
@@ -345,8 +339,10 @@ class Model_2_baseline (nn.Module):
         y1 = self.decoder(y1, low_level, size)
 
         _, entropy = normalized_shannon_entropy(y1, get_value=True)
+        torch.cuda.synchronize()
+        tic_1 = time.perf_counter()
         if entropy < threshold:
-            return y1, True
+            return y1, 1, tic_1 - tic
 
         for i in range(self.num_model_2_layers):
             two_last_inputs = self.cells[i](
@@ -356,7 +352,11 @@ class Model_2_baseline (nn.Module):
         y2 = self.aspp(y2)
         y2 = self.decoder(y2, low_level, size)
 
-        return y2, False
+        torch.cuda.synchronize()
+        tic_2 = time.perf_counter()
+
+        return y2, 0, tic_2 - tic
+
 
     def time_measure(self, x):
         size = (x.shape[2], x.shape[3])
@@ -365,11 +365,13 @@ class Model_2_baseline (nn.Module):
 
         low_level, two_last_inputs, y1 = self.model_1(x)
         low_level = self.low_level_conv(low_level)
+        torch.cuda.synchronize()
+        tic_1 = time.perf_counter()
         y1 = self.aspp(y1)
         y1 = self.decoder(y1, low_level, size)
 
-        torch.cuda.synchronize()
-        tic_1 = time.perf_counter()
+        # torch.cuda.synchronize()
+        # tic_1 = time.perf_counter()
 
         for i in range(self.num_model_2_layers):
             two_last_inputs = self.cells[i](

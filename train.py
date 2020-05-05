@@ -72,8 +72,8 @@ class trainNew(object):
             # low_level_layer = 0
 
             # batch_2_20f_513_crop_80e_3e-3awd_4e-4wd_1e-3alr
-            network_arch = [0, 1, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3]
-            low_level_layer = 2
+            network_arch = [1, 2, 2, 2, 3, 2, 2, 1, 1, 1, 1, 2]
+            low_level_layer = 0
 
             model = Model_2(network_arch,
                             cell_arch,
@@ -322,7 +322,6 @@ def main():
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes', choices=['pascal', 'coco', 'cityscapes'], help='dataset name (default: pascal)')
     parser.add_argument('--workers', type=int, default=4, metavar='N', help='dataloader threads')
-    parser.add_argument('--joint', type=bool, default=False)
 
     """ training config """
     parser.add_argument('--use-amp', type=bool, default=False)

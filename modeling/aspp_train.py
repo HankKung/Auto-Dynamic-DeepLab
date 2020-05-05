@@ -6,11 +6,10 @@ from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.operations import ReLUConvBN
 
 class ASPP_train(nn.Module):
-    def __init__(self, C, out, BatchNorm, depth=256, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1, use_map=False):
+    def __init__(self, C, out, BatchNorm, depth=256, conv=nn.Conv2d, eps=1e-5, momentum=0.1, mult=1):
         super(ASPP_train, self).__init__()
         self._C = C
         self._depth = depth
-        self.use_map = use_map
         self.global_pooling = nn.AdaptiveAvgPool2d(1)
         self.relu = nn.ReLU(inplace=True)
         self.relu_non_inplace = nn.ReLU()
@@ -23,13 +22,8 @@ class ASPP_train(nn.Module):
                                dilation=int(18*mult), padding=int(18*mult), bias=False)
         self.aspp5 = conv(C, depth, kernel_size=1, stride=1, bias=False)
 
-        if self.use_map:
-            self.aspp6 = conv(C, depth, kernel_size=3, stride=1, bias=False)
-            self.aspp6_bn = BatchNorm(depth, eps=eps, momentum=momentum)
-            self.conv1 = conv(depth * 6, out, kernel_size=1, stride=1, bias=False)
-        else: 
-            self.conv1 = conv(depth * 5, out, kernel_size=1, stride=1, bias=False)
-
+        self.conv1 = conv(depth * 5, out, kernel_size=1, stride=1, bias=False)
+        
         self.bn1 = BatchNorm(out, eps=eps, momentum=momentum)
         self.aspp1_bn = BatchNorm(depth, eps=eps, momentum=momentum)
         self.aspp2_bn = BatchNorm(depth, eps=eps, momentum=momentum)
@@ -60,18 +54,6 @@ class ASPP_train(nn.Module):
         x5 = nn.Upsample((x.shape[2], x.shape[3]), mode='bilinear',
                              align_corners=True)(x5)
 
-        # if self.use_map and isinstance(confidence_map, torch.Tensor):
-        #     map_h, map_d = (confidence_map.shape[1], confidence_map.shape[2])
-        #     confidence_map = confidence_map.view(batch_size, 1, map_h, map_d)
-        #     confidence_map = F.interpolate(confidence_map, [h, w], mode='bilinear')
-        #     confidence_map = F.softmax(confidence_map, dim=-1)
-        #     if iter_rate == 1.0:
-        #         x6 = x * confidence_map 
-        #     else:
-        #         x6 = (1.0 - iter_rate) * x + iter_rate * x * confidence_map
-        #     x = torch.cat((x1, x2, x3, x4, x5, x6), 1)
-
-        # else:
         x = torch.cat((x1, x2, x3, x4, x5), 1)
 
         x = self.conv1(x)

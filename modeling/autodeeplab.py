@@ -101,9 +101,10 @@ class AutoDeepLab (nn.Module):
         self.cells = nn.ModuleList()
         self.model_network = network_arch
         self.cell_arch = torch.from_numpy(cell_arch)
+        self.low_level_layer = low_level_layer
         self._num_classes = num_classes
 
-
+        FB = F * B
         fm = {0: 1, 1: 2, 2: 4, 3: 8}
         self.stem0 = nn.Sequential(
             nn.Conv2d(3, 64, 3, stride=2, padding=1, bias=False),
@@ -131,18 +132,18 @@ class AutoDeepLab (nn.Module):
             if i == 0:
                 downup_sample = int(0 - level)
                 pre_downup_sample = int(-1 - level)
-                _cell = Cell_baseline(BatchNorm,
+                _cell = Cell_AutoDeepLab(BatchNorm,
                             B,
                             64,
                             128,                              
                             self.cell_arch,
-                            self.model_1_network[i],
+                            self.model_network[i],
                             F * fm[level],                        
                             downup_sample) 
                 
             elif i == 1:
                 pre_downup_sample = int(0 - level)
-                _cell = Cell_baseline(BatchNorm,
+                _cell = Cell_AutoDeepLab(BatchNorm,
                             B,
                             128,
                             FB * fm[prev_level],
@@ -151,7 +152,7 @@ class AutoDeepLab (nn.Module):
                             F * fm[level],
                             downup_sample)
             else:
-                _cell = Cell_baseline(BatchNorm,
+                _cell = Cell_AutoDeepLab(BatchNorm,
                             B, 
                             FB * fm[prev_prev_level],
                             FB * fm[prev_level],
@@ -169,7 +170,7 @@ class AutoDeepLab (nn.Module):
 
         self.low_level_conv = nn.Sequential(
                                 nn.ReLU(),
-                                nn.Conv2d(F * B * 2**model_network[low_level_layer], 48, 1, bias=False),
+                                nn.Conv2d(F * B * 2**self.model_network[low_level_layer], 48, 1, bias=False),
                                 BatchNorm(48)
                                 )
         
@@ -200,19 +201,23 @@ class AutoDeepLab (nn.Module):
         y = self.aspp(y)
         y = self.decoder(y, low_level, size)     
 
-        return y
+        return None, y
 
     def time_measure(self, x):
         size = (x.shape[2], x.shape[3])
         torch.cuda.synchronize()
         tic = time.perf_counter()
+        stem = self.stem0(x)
+        stem0 = self.stem1(stem)
+        stem1 = self.stem2(stem0)
+        two_last_inputs = (stem0, stem1)
 
-        low_level, two_last_inputs, y = self.model_1(x)
-        low_level = self.low_level_conv(low_level)
-
-        for i in range(self.num_model_2_layers):
+        for i in range(self.num_model_layers):
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
+            if i == self.low_level_layer:
+                low_level = two_last_inputs[1]
+                low_level = self.low_level_conv(low_level)
 
         y = two_last_inputs[-1]
         y = self.aspp(y)
@@ -221,7 +226,7 @@ class AutoDeepLab (nn.Module):
         torch.cuda.synchronize()
         tic_1 = time.perf_counter()
 
-        return y, tic_1 - tic
+        return None, None, None, tic_1 - tic
 
     def _init_weight(self):
         for m in self.modules():
