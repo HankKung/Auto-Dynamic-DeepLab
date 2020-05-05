@@ -16,6 +16,7 @@ from utils.eval_utils import AverageMeter
 
 from modeling.baseline_model import *
 from modeling.dense_model import *
+from modeling.autodeeplab import *
 from modeling.operations import normalized_shannon_entropy
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.sync_batchnorm.replicate import patch_replication_callback
@@ -30,6 +31,10 @@ class Evaluation(object):
     def __init__(self, args):
 
         self.args = args
+        self.saver = Saver(args)
+        self.saver.save_experiment_config()
+        self.summary = TensorboardSummary(self.saver.experiment_dir)
+        self.writer = self.summary.create_summary()
 
         # Define Dataloader
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
@@ -39,8 +44,8 @@ class Evaluation(object):
             """ 40_5e_lr_38_31.91  """
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
-            network_arch = [0, 1, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3]
-            low_level_layer = 2
+            network_arch = [1, 2, 2, 2, 3, 2, 2, 1, 1, 1, 1, 2]
+            low_level_layer = 0
 
             model = Model_2(network_arch,
                             cell_arch,
@@ -74,6 +79,12 @@ class Evaluation(object):
 
             elif args.network == 'autodeeplab-baseline':
                 model = Model_2_baseline(network_arch,
+                                        cell_arch,
+                                        self.nclass,
+                                        args,
+                                        low_level_layer)
+            elif args.network == 'autodeeplab':
+                model = AutoDeepLab(network_arch,
                                         cell_arch,
                                         self.nclass,
                                         args,
@@ -133,14 +144,15 @@ class Evaluation(object):
         self.evaluator_2.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
-
+        pool_vec = np.zeros(500)
+        entropy_vec = np.zeros(500)
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output_1, output_2 = self.model(image)
+                output_1, output_2, pooling = self.model(image)
 
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
@@ -149,15 +161,30 @@ class Evaluation(object):
             pred_1 = torch.argmax(output_1, axis=1)
             pred_2 = torch.argmax(output_2, axis=1)
 
+            entropy = normalized_shannon_entropy(output_1)
+
             # Add batch sample into evaluator
             self.evaluator_1.add_batch(target, pred_1)
             self.evaluator_2.add_batch(target, pred_2)
 
+            self.writer.add_scalar('max_confidence/i', pool.item(), i)
+            self.writer.add_scalar('entropy/i', entropy.item(), i)
+            self.writer.add_scalar('loss/i', loss_1.item(), i)
+
+            pool_vec[i] = pool.item()
+            entropy_vec[i] = pool.item()
+            pool_vec = torch.from_numpy(pool_vec)
+            entropy_vec = torch.from_numpy(entropy_vec)
+
         mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
         mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
 
+        cos = nn.CosineSimilarity()
+        cos_sim = cos(pool_vec, entropy_vec)
+
         print('Validation:')
         print("mIoU_1:{}, mIoU_2: {}".format(mIoU_1, mIoU_2))
+        print("cosine similarity: {}".format(cos_sim))
 
 
     def testing_entropy(self):
@@ -201,17 +228,21 @@ class Evaluation(object):
     def dynamic_inference(self, threshold=None):
         self.model.eval()
         self.evaluator_1.reset()
+        time_meter = AverageMeter()
+
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
-
+        total_earlier_exit = 0
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output, confidence, earlier_exit = self.model.dynamic_inference(image, threshold)
-
+                output, earlier_exit, tic = self.model.dynamic_inference(image, threshold)
+            total_earlier_exit += earlier_exit
+            time_meter.update(tic)
+            
             loss = self.criterion(output, target)
             pred = torch.argmax(output, axis=1)
 
@@ -221,7 +252,10 @@ class Evaluation(object):
         mIoU = self.evaluator_1.Mean_Intersection_over_Union()
 
         print('Validation:')
-        print("mIoU_1:".format(mIoU_1))
+        print("mIoU: {}".format(mIoU))
+        print("mean_inference_time: {}".format(time_meter.average()))
+        print("fps: {}".format(1/time_meter.average()))
+        print("num_earlier_exit: {}".format(total_earlier_exit/500*100))
 
 
     def time_measure(self):
@@ -239,10 +273,12 @@ class Evaluation(object):
 
             with torch.no_grad():
                 _, _, t1, t2 = self.model.time_measure(image)
-            time_meter_1.update(t1)
+            if t1 != None:
+                time_meter_1.update(t1)
             time_meter_2.update(t2)
+        if t1 != None:
             print(time_meter_1.average())
-            print(time_meter_2.average())
+        print(time_meter_2.average())
 
 
 
@@ -258,16 +294,14 @@ def main():
     parser = argparse.ArgumentParser(description="Eval")
     """ model setting """
     parser.add_argument('--network', type=str, default='searched-dense', \
-        choices=['searched-dense', 'searched-baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'supernet'])
+        choices=['searched-dense', 'searched-baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'autodeeplab', 'supernet'])
     parser.add_argument('--num_model_1_layers', type=int, default=6)
     parser.add_argument('--F', type=int, default=20)
     parser.add_argument('--B', type=int, default=5)
-    parser.add_argument('--use-oc', type=bool, default=False)
-    parser.add_argument('--confidence-map', type=bool, default=False)
+    parser.add_argument('--use-map', type=bool, default=False)
 
 
     """ dynamic inference"""
-    parser.add_argument('--confidence_mode', type=str, default='avg', choices=['avg', 'max'])
     parser.add_argument('--entropy_threshold', type=float, default=None)
 
 
@@ -321,7 +355,8 @@ def main():
     evaluation = Evaluation(args)
     # evaluation.testing_entropy()
     evaluation.mac()
-    evaluation.validation()
+    evaluation.dynamic_inference(args.entropy_threshold)
+    #evaluation.validation()
     #evaluation.writer.close()
 
 if __name__ == "__main__":

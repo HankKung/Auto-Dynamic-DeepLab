@@ -215,6 +215,9 @@ class Model_1 (nn.Module):
             mult =1
 
         self._init_weight()
+        self.pooling = nn.MaxPool1d(3, stride=2)
+        self.relu = nn.ReLU()
+
 
 
     def forward(self, x):
@@ -240,9 +243,11 @@ class Model_1 (nn.Module):
 
             if i == 2:
                 x = two_last_inputs[1]
-
-
-        return low_level_feature, dense_feature_map, x
+        pool = self.relu(x)
+        pool = self.pooling(pool)
+        c, h, w = pool.shape[1] , pool.shape[2], pool.shape[3]
+        pool = torch.sum(pool)/ (c * h * w)
+        return low_level_feature, dense_feature_map, x, pool
 
 
     def _init_weight(self):
@@ -365,23 +370,23 @@ class Model_2 (nn.Module):
                                 256,
                                 BatchNorm,
                                 mult=mult,
-                                use_map=self.args.use_map)
+                                )
         self._init_weight()
 
 
     def forward(self, x, iter_rate=1.0):
         size = (x.shape[2], x.shape[3])
-        low_level, dense_feature_map, x = self.model_1(x)
+        low_level, dense_feature_map, x, pooling = self.model_1(x)
         low_level = self.low_level_conv(low_level)
 
         y1 = self.aspp(x)
         y1 = self.decoder(y1, low_level, size)
 
         # if self.args.use_map:
-        confidence_map = normalized_shannon_entropy(y1, get_value=False)
-        min_v = torch.min(confidence_map)
-        range_v = torch.max(confidence_map) - min_v
-        normalized_confidence_map = (confidence_map - min_v) / range_v
+        # confidence_map = normalized_shannon_entropy(y1, get_value=False)
+        # min_v = torch.min(confidence_map)
+        # range_v = torch.max(confidence_map) - min_v
+        # normalized_confidence_map = (confidence_map - min_v) / range_v
 
         for i in range(self.num_model_2_layers):
             if i < self.num_model_2_layers - 2:
@@ -392,16 +397,17 @@ class Model_2 (nn.Module):
             else:
                 x = self.cells[i](dense_feature_map[:-1], x)
 
+        x = self.aspp(x)
+        x = self.decoder(x, low_level, size)   
         if self.args.use_map:
-            x = self.aspp(x, normalized_confidence_map, iter_rate)
-        else:
-            x = self.aspp(x)
-        x = self.decoder(x, low_level, size)     
-        x = x * (1 - normalized_confidence_map) + y1 * normalized_confidence_map
-        return y1, x
+            x = x * (1 - normalized_confidence_map) + y1 * normalized_confidence_map
+        return y1, x, pooling
 
 
     def dynamic_inference(self, x, threshold=False):
+        torch.cuda.synchronize()
+        tic = time.perf_counter()
+
         size = (x.shape[2], x.shape[3])
         low_level, dense_feature_map, x = self.model_1(x)
         low_level = self.low_level_conv(low_level)
@@ -409,9 +415,13 @@ class Model_2 (nn.Module):
         y1 = self.aspp(x)
         y1 = self.decoder(y1, low_level, size)
 
-        confidence_map, entropy = normalized_shannon_entropy(y1, get_value=True)
+        entropy = normalized_shannon_entropy(y1, get_value=True)
+
+        torch.cuda.synchronize()
+        tic_1 = time.perf_counter()
+
         if entropy < threshold:
-            return y1, True
+            return y1, 1, tic_1 - tic
 
         for i in range(self.num_model_2_layers):
             if i < self.num_model_2_layers - 2:
@@ -422,13 +432,14 @@ class Model_2 (nn.Module):
             else:
                 x = self.cells[i](dense_feature_map[:-1], x)
 
-        if self.args.use_map:
-            x = self.aspp(x, confidence_map)
-        else:
-            x = self.aspp(x)
-        x = self.decoder(x, low_level, size)     
 
-        return x, False
+        x = self.aspp(x)
+        x = self.decoder(x, low_level, size)  
+
+        torch.cuda.synchronize()
+        tic_2 = time.perf_counter()   
+
+        return x, 0, tic_2 - tic
 
     def time_measure(self, x):
         size = (x.shape[2], x.shape[3])
@@ -455,10 +466,7 @@ class Model_2 (nn.Module):
             else:
                 x = self.cells[i](dense_feature_map[:-1], x)
 
-        if self.args.usee_map:
-            x = self.aspp(x, confidence_map)
-        else:
-            x = self.aspp(x)
+        x = self.aspp(x)
         x = self.decoder(x, low_level, size)     
 
         torch.cuda.synchronize()

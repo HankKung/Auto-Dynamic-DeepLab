@@ -164,18 +164,21 @@ def normalized_shannon_entropy(x, get_value=False, num_class=19):
     x = torch.sum(x, dim=3)
     x = x / math.log(num_class)
     x = -x
-    confidence_map = 1.0 - x 
+    # confidence_map = 1.0 - x 
 
-    batch_size = confidence_map.shape[0]
-    map_h, map_d = (confidence_map.shape[1], confidence_map.shape[2])
-    confidence_map = confidence_map.view(batch_size, 1, map_h, map_d)
+    # batch_size = confidence_map.shape[0]
+    # map_h, map_d = (confidence_map.shape[1], confidence_map.shape[2])
+    # confidence_map = confidence_map.view(batch_size, 1, map_h, map_d)
 
-    if not get_value:
-      return confidence_map
+    # if not get_value:
+    #   return confidence_map
 
     x = x.sum()
     x = x / (size[0] * size[1])
-    return confidence_map, x.item()
+    return x.item()
+
+def cosine_similarity(x, y):
+  
 
 
 def global_pooling(x, mode='avg'):
