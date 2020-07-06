@@ -144,15 +144,50 @@ class Evaluation(object):
         self.evaluator_2.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
-        pool_vec = np.zeros(500)
-        entropy_vec = np.zeros(500)
+
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output_1, output_2, pooling = self.model(image)
+                output_1, output_2 = self.model(image)
+
+            loss_1 = self.criterion(output_1, target)
+            loss_2 = self.criterion(output_2, target)
+
+
+            pred_1 = torch.argmax(output_1, axis=1)
+            pred_2 = torch.argmax(output_2, axis=1)
+
+
+            # Add batch sample into evaluator
+            self.evaluator_1.add_batch(target, pred_1)
+            self.evaluator_2.add_batch(target, pred_2)
+
+        mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
+        mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
+
+        print('Validation:')
+        print("mIoU_1:{}, mIoU_2: {}".format(mIoU_1, mIoU_2))
+
+
+    def testing_entropy(self):
+        self.model.eval()
+        self.evaluator_1.reset()
+        self.evaluator_2.reset()
+        tbar = tqdm(self.val_loader, desc='\r')
+        test_loss = 0.0
+        pool_vec = np.zeros(500)
+        entropy_vec = np.zeros(500)
+        loss_vec = np.zeros(500)
+        for i, sample in enumerate(tbar):
+            image, target = sample['image'], sample['label']
+            if self.args.cuda:
+                image, target = image.cuda(), target.cuda()
+
+            with torch.no_grad():
+                output_1, output_2, pool = self.model.dynamic_inference(image, threshold=threshold, confidence=confidence)
 
             loss_1 = self.criterion(output_1, target)
             loss_2 = self.criterion(output_2, target)
@@ -167,65 +202,33 @@ class Evaluation(object):
             self.evaluator_1.add_batch(target, pred_1)
             self.evaluator_2.add_batch(target, pred_2)
 
-            self.writer.add_scalar('max_confidence/i', pool.item(), i)
-            self.writer.add_scalar('entropy/i', entropy.item(), i)
+            self.writer.add_scalar('pool/i', pool.item(), i)
+            self.writer.add_scalar('entropy/i', entropy, i)
             self.writer.add_scalar('loss/i', loss_1.item(), i)
 
             pool_vec[i] = pool.item()
-            entropy_vec[i] = pool.item()
-            pool_vec = torch.from_numpy(pool_vec)
-            entropy_vec = torch.from_numpy(entropy_vec)
+            entropy_vec[i] = entropy
+            loss_vec[i] = loss_1.item()
+
+        pool_vec = torch.from_numpy(pool_vec)
+        entropy_vec = torch.from_numpy(entropy_vec)
+        loss_vec = torch.from_numpy(loss_vec)
 
         mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
         mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
 
-        cos = nn.CosineSimilarity()
+        cos = nn.CosineSimilarity(dim=-1)
         cos_sim = cos(pool_vec, entropy_vec)
+        print("pool-entropy_cosine similarity: {}".format(cos_sim))
+        cos_sim = cos(pool_vec, loss_vec)
+        print("pool-loss_cosine similarity: {}".format(cos_sim))
+        cos_sim = cos(entropy_vec, loss_vec)
+        print("-entropy-loss_cosine similarity: {}".format(cos_sim))
 
         print('Validation:')
         print("mIoU_1:{}, mIoU_2: {}".format(mIoU_1, mIoU_2))
-        print("cosine similarity: {}".format(cos_sim))
 
-
-    def testing_entropy(self):
-        self.saver = Saver(self.args)
-        self.saver.save_experiment_config()
-
-        """ Define Tensorboard Summary """
-        self.summary = TensorboardSummary(self.saver.experiment_dir)
-        self.writer = self.summary.create_summary()
-
-        self.model.eval()
-        self.evaluator_1.reset()
-        self.evaluator_2.reset()
-        tbar = tqdm(self.val_loader, desc='\r')
-        test_loss = 0.0
-
-        for i, sample in enumerate(tbar):
-            image, target = sample['image'], sample['label']
-            if self.args.cuda:
-                image, target = image.cuda(), target.cuda()
-
-            with torch.no_grad():
-                output_1, avg_confidence, max_confidence = self.model.testing_entropy(image)
-
-            loss_1 = self.criterion(output_1, target)
-
-            entropy = normalized_shannon_entropy(output_1)
-
-            self.writer.add_scalar('avg_confidence/i', avg_confidence.item(), i)
-            self.writer.add_scalar('max_confidence/i', max_confidence.item(), i)
-            self.writer.add_scalar('entropy/i', entropy.item(), i)
-            self.writer.add_scalar('loss/i', loss_1.item(), i)
-
-            self.summary.visualize_image(self.writer, self.args.dataset, image, target_show, output_2, global_step)
-
-
-        print('testing confidence')
-        self.writer.close()
-
-
-    def dynamic_inference(self, threshold=None):
+    def dynamic_inference(self, threshold, confidence):
         self.model.eval()
         self.evaluator_1.reset()
         time_meter = AverageMeter()
@@ -233,14 +236,16 @@ class Evaluation(object):
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
         total_earlier_exit = 0
+        confidence_value_avg = 0.0
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output, earlier_exit, tic = self.model.dynamic_inference(image, threshold)
+                output, earlier_exit, tic, confidence_value = self.model.dynamic_inference(image, threshold=threshold, confidence=confidence)
             total_earlier_exit += earlier_exit
+            confidence_value_avg += confidence_value
             time_meter.update(tic)
             
             loss = self.criterion(output, target)
@@ -254,9 +259,9 @@ class Evaluation(object):
         print('Validation:')
         print("mIoU: {}".format(mIoU))
         print("mean_inference_time: {}".format(time_meter.average()))
-        print("fps: {}".format(1/time_meter.average()))
+        print("fps: {}".format(1.0/time_meter.average()))
         print("num_earlier_exit: {}".format(total_earlier_exit/500*100))
-
+        print("avg_confidence: {}".format(confidence_value_avg/500))
 
     def time_measure(self):
         time_meter_1 = AverageMeter()
@@ -302,8 +307,8 @@ def main():
 
 
     """ dynamic inference"""
-    parser.add_argument('--entropy_threshold', type=float, default=None)
-
+    parser.add_argument('--threshold', type=float, default=None)
+    parser.add_argument('--confidence', type=str, default='pool', choices=['pool', 'entropy', 'max'])
 
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes')
@@ -312,7 +317,7 @@ def main():
 
     """ training config """
     parser.add_argument('--use-amp', type=bool, default=False)
-    parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'])
+    
     parser.add_argument('--sync-bn', type=bool, default=None)
     parser.add_argument('--freeze-bn', type=bool, default=False)
 
@@ -353,11 +358,10 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     evaluation = Evaluation(args)
-    # evaluation.testing_entropy()
     evaluation.mac()
-    evaluation.dynamic_inference(args.entropy_threshold)
+    evaluation.dynamic_inference(threshold=args.threshold, confidence=args.confidence)
     #evaluation.validation()
-    #evaluation.writer.close()
+    evaluation.writer.close()
 
 if __name__ == "__main__":
    main()

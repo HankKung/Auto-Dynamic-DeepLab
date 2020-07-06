@@ -71,7 +71,7 @@ class trainNew(object):
             # network_arch = [0, 1, 2, 3, 2, 2, 2, 2, 1, 2, 3, 2]
             # low_level_layer = 0
 
-            # batch_2_20f_513_crop_80e_3e-3awd_4e-4wd_1e-3alr
+            #4_15_80e_40a_03-lr_5e-4wd_6e-4alr_1e-3awd 513x513 batch 4
             network_arch = [1, 2, 2, 2, 3, 2, 2, 1, 1, 1, 1, 2]
             low_level_layer = 0
 

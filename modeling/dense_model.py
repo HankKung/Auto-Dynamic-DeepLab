@@ -215,7 +215,7 @@ class Model_1 (nn.Module):
             mult =1
 
         self._init_weight()
-        self.pooling = nn.MaxPool1d(3, stride=2)
+        self.pooling = nn.MaxPool2d(3, stride=2)
         self.relu = nn.ReLU()
 
 
@@ -243,12 +243,19 @@ class Model_1 (nn.Module):
 
             if i == 2:
                 x = two_last_inputs[1]
+        # pool = self.relu(x)
+        # pool = self.pooling(pool)
+        # c, h, w = pool.shape[1] , pool.shape[2], pool.shape[3]
+        # pool = torch.sum(pool)/ (c * h * w)
+        return low_level_feature, dense_feature_map, x
+
+
+    def decision_maker(self, x):
         pool = self.relu(x)
         pool = self.pooling(pool)
         c, h, w = pool.shape[1] , pool.shape[2], pool.shape[3]
         pool = torch.sum(pool)/ (c * h * w)
-        return low_level_feature, dense_feature_map, x, pool
-
+        return pool.item()
 
     def _init_weight(self):
         for m in self.modules():
@@ -376,7 +383,7 @@ class Model_2 (nn.Module):
 
     def forward(self, x, iter_rate=1.0):
         size = (x.shape[2], x.shape[3])
-        low_level, dense_feature_map, x, pooling = self.model_1(x)
+        low_level, dense_feature_map, x = self.model_1(x)
         low_level = self.low_level_conv(low_level)
 
         y1 = self.aspp(x)
@@ -387,7 +394,7 @@ class Model_2 (nn.Module):
         # min_v = torch.min(confidence_map)
         # range_v = torch.max(confidence_map) - min_v
         # normalized_confidence_map = (confidence_map - min_v) / range_v
-
+        # return y1
         for i in range(self.num_model_2_layers):
             if i < self.num_model_2_layers - 2:
                 _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
@@ -401,45 +408,87 @@ class Model_2 (nn.Module):
         x = self.decoder(x, low_level, size)   
         if self.args.use_map:
             x = x * (1 - normalized_confidence_map) + y1 * normalized_confidence_map
-        return y1, x, pooling
+        return y1, x
 
 
-    def dynamic_inference(self, x, threshold=False):
-        torch.cuda.synchronize()
-        tic = time.perf_counter()
+    def dynamic_inference(self, x, threshold=1.0, confidence='pool'):
+        if confidence == 'pool':
+            torch.cuda.synchronize()
+            tic = time.perf_counter()
 
-        size = (x.shape[2], x.shape[3])
-        low_level, dense_feature_map, x = self.model_1(x)
-        low_level = self.low_level_conv(low_level)
+            size = (x.shape[2], x.shape[3])
+            low_level, dense_feature_map, x = self.model_1(x)
+            low_level = self.low_level_conv(low_level)
 
-        y1 = self.aspp(x)
-        y1 = self.decoder(y1, low_level, size)
+            confidence_value = self.model_1.decision_maker(x)
 
-        entropy = normalized_shannon_entropy(y1, get_value=True)
+            if confidence_value > threshold:
+                y1 = self.aspp(x)
+                y1 = self.decoder(y1, low_level, size)
 
-        torch.cuda.synchronize()
-        tic_1 = time.perf_counter()
+                torch.cuda.synchronize()
+                tic_1 = time.perf_counter()
+                return y1, 1, tic_1 - tic, confidence_value
 
-        if entropy < threshold:
-            return y1, 1, tic_1 - tic
-
-        for i in range(self.num_model_2_layers):
-            if i < self.num_model_2_layers - 2:
-                _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                dense_feature_map.append(feature_map)
-            elif i == self.num_model_2_layers -1:
-                x = self.cells[i](dense_feature_map, x)
-            else:
-                x = self.cells[i](dense_feature_map[:-1], x)
+            for i in range(self.num_model_2_layers):
+                if i < self.num_model_2_layers - 2:
+                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
+                    dense_feature_map.append(feature_map)
+                elif i == self.num_model_2_layers -1:
+                    x = self.cells[i](dense_feature_map, x)
+                else:
+                    x = self.cells[i](dense_feature_map[:-1], x)
 
 
-        x = self.aspp(x)
-        x = self.decoder(x, low_level, size)  
+            x = self.aspp(x)
+            x = self.decoder(x, low_level, size)  
 
-        torch.cuda.synchronize()
-        tic_2 = time.perf_counter()   
+            torch.cuda.synchronize()
+            tic_2 = time.perf_counter()   
 
-        return x, 0, tic_2 - tic
+            return x, 0, tic_2 - tic, confidence_value
+        else:
+            torch.cuda.synchronize()
+            tic = time.perf_counter()
+
+            size = (x.shape[2], x.shape[3])
+
+            low_level, dense_feature_map, x = self.model_1(x)
+            low_level = self.low_level_conv(low_level)
+
+            y1 = self.aspp(x)
+            y1 = self.decoder(y1, low_level, size)
+            confidence_value = .0
+            if confidence == 'entropy':
+                confidence_value = normalized_shannon_entropy(y1)
+                if confidence_value < threshold:
+                    torch.cuda.synchronize()
+                    tic_1 = time.perf_counter()
+                    return y1, 1, tic_1 - tic, confidence_value
+
+            elif confidence == 'max':
+                confidence_value = confidence_max(y1, threshold)
+                if confidence_value > threshold:
+                    torch.cuda.synchronize()
+                    tic_1 = time.perf_counter()
+                    return y1, 1, tic_1 - tic, confidence_value
+
+            for i in range(self.num_model_2_layers):
+                if i < self.num_model_2_layers - 2:
+                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
+                    dense_feature_map.append(feature_map)
+                elif i == self.num_model_2_layers -1:
+                    x = self.cells[i](dense_feature_map, x)
+                else:
+                    x = self.cells[i](dense_feature_map[:-1], x)
+
+
+            x = self.aspp(x)
+            x = self.decoder(x, low_level, size)  
+
+            torch.cuda.synchronize()
+            tic_2 = time.perf_counter()   
+            return x, 0, tic_2 - tic, confidence_value
 
     def time_measure(self, x):
         size = (x.shape[2], x.shape[3])
