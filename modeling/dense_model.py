@@ -216,6 +216,7 @@ class Model_1 (nn.Module):
 
         self._init_weight()
         self.pooling = nn.MaxPool2d(3, stride=2)
+        self.gap = nn.AdaptiveAvgPool2d(1)
         self.relu = nn.ReLU()
 
 
@@ -254,7 +255,8 @@ class Model_1 (nn.Module):
         pool = self.relu(x)
         pool = self.pooling(pool)
         c, h, w = pool.shape[1] , pool.shape[2], pool.shape[3]
-        pool = torch.sum(pool)/ (c * h * w)
+        pool = self.gap(pool)
+        pool = torch.sum(pool)/ c
         return pool.item()
 
     def _init_weight(self):
