@@ -20,7 +20,7 @@ from utils.eval_utils import *
 
 from modeling.sync_batchnorm.replicate import patch_replication_callback
 from modeling.model_search import Model_search
-from modeling.model_layer_search import *
+from modeling.model_net_search import *
 from decoding.decoding_formulas import Decoder
 
 import apex
@@ -56,6 +56,7 @@ class Trainer(object):
 
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last':True, 'drop_last': True}
         self.train_loaderA, self.train_loaderB, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
+
         if args.use_balanced_weights:
             classes_weights_path = os.path.join(Path.db_root_dir(args.dataset), args.dataset+'_classes_weights.npy')
             if os.path.isfile(classes_weights_path):
@@ -71,12 +72,19 @@ class Trainer(object):
 
         """ Define network """
         if self.args.network == 'supernet':
-            model = Model_search(self.nclass, 12, self.args, exit_layer=5)
+                model = Model_search(self.nclass, 12, self.args, exit_layer=5)
+
         elif self.args.network == 'layer_supernet':
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
-            model = Model_layer_search(self.nclass, 12, self.args, exit_layer=5, alphas=cell_arch)
-        
+
+            if self.args.C == 2: 
+                C_index = [5]
+            elif self.args.C == 4:
+                C_index = [2,5,8]
+
+            model = Model_net_search(self.nclass, 12, self.args, C_index=C_index, alphas=cell_arch)
+
 
         optimizer = torch.optim.SGD(
                 model.weight_parameters(),
@@ -92,8 +100,10 @@ class Trainer(object):
                                                     weight_decay=args.arch_weight_decay)
 
         """ Define Evaluator """
-        self.evaluator_1 = Evaluator(self.nclass)
-        self.evaluator_2 = Evaluator(self.nclass)
+        self.evaluator = []
+        for num in self.args.C:
+            self.evaluator.append(Evaluator(self.nclass))
+
 
         """ Define lr scheduler """
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
@@ -173,10 +183,13 @@ class Trainer(object):
                 image, target = image.cuda(), target.cuda()
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            output_1, output_2 = self.model(image)
-            loss_1 = self.criterion(output_1, target)
-            loss_2 = self.criterion(output_2, target)
-            loss = loss_1 + loss_2
+            outputs = self.model(image)
+
+            loss = []
+            for i in range(self.args.C + 1):
+                loss.append(self.self.criterion(outputs[i], target))
+
+            loss = sum(loss)
 
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -192,11 +205,13 @@ class Trainer(object):
                     image_search, target_search = image_search.cuda(), target_search.cuda()
 
                 self.architect_optimizer.zero_grad()
-                output_search_1, output_search_2 = self.model(image_search)
+                outputs_search = self.model(image_search)
 
-                arch_loss_1 = self.criterion(output_search_1, target_search)
-                arch_loss_2 = self.criterion(output_search_2, target_search)
-                arch_loss = arch_loss_1 + arch_loss_2
+                arch_loss = []
+                for i in range(self.args.C + 1):
+                    arch_loss.append(self.self.criterion(outputs_search[i], target_search))
+
+                arch_loss = sum(arch_loss)
                 
                 if self.use_amp:
                     with amp.scale_loss(arch_loss, self.architect_optimizer) as arch_scaled_loss:
@@ -220,8 +235,9 @@ class Trainer(object):
 
     def validation(self, epoch):
         self.model.eval()
-        self.evaluator_1.reset()
-        self.evaluator_2.reset()
+        for e in self.evaluator:
+            e.reset()
+
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
         for i, sample in enumerate(tbar):
@@ -229,32 +245,36 @@ class Trainer(object):
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
-                output_1, output_2 = self.model(image)
-            loss_1 = self.criterion(output_1, target)
-            loss_2 = self.criterion(output_2, target)
-            loss = loss_1 + loss_2
+                outputs = self.model(image)
+
+            loss = []
+            for i in range(self.args.C + 1):
+                loss.append(self.self.criterion(outputs[i], target))
+
+            loss = sum(loss)
             test_loss += loss.item()
 
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
 
-            output_1 = torch.argmax(output_1, axis=1)
-            output_2 = torch.argmax(output_2, axis=1)
+            for i in range(self.args.C + 1):
+                outputs[i] = torch.argmax(outputs[i], axis=1)
+                self.evaluator[i].add_batch(target, outputs[i])
 
             """ Add batch sample into evaluator"""
-            self.evaluator_1.add_batch(target, output_1)
-            self.evaluator_2.add_batch(target, output_2)
-        mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
-        mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
+
+        mIoU = []
+        for i, e in enumerate(self.evaluator):
+            mIoU.append(e.Mean_Intersection_over_Union())
+            self.writer.add_scalar('val/classifier_' + i + '/mIoU', mIoU[i], epoch)
 
         """ FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union() """
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
-        self.writer.add_scalar('val/classifier_1/mIoU', mIoU_1, epoch)
-        self.writer.add_scalar('val/classifier_2/mIoU', mIoU_2, epoch)
+
 
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.test_batch_size + image.data.shape[0]))
         print('Loss: %.3f' % test_loss)
-        new_pred = (mIoU_1 + mIoU_2)/2
+        new_pred = sum(mIoU)
         if new_pred > self.best_pred:
             is_best = True
             self.best_pred = new_pred
@@ -270,47 +290,41 @@ class Trainer(object):
             }, is_best)
 
         """ decode the arch """
-        self.decoder_save(epoch, new_pred)
+        self.decoder_save(epoch, miou=new_pred, evaluation=True)
 
 
-    def decoder_save(self, epoch, miou, num='val'):
-
-        if type(num) == int:
-            num = str(num)
+    def decoder_save(self, epoch, miou=None, evaluation=False):
+        num = str(epoch)
+        if evaluation:
+            num = num + '_eval'
         try:
-            dir_name = os.path.join(self.saver.experiment_dir, str(epoch) + '_'+ num)
+            dir_name = os.path.join(self.saver.experiment_dir, num)
             os.makedirs(dir_name)
         except:
             print('folder path error')
 
-
-        if self.args.network == 'layer_supernet':
-            decoder = Decoder(None,
-                              self.model.betas,
-                              self.args.B)
-        else:
-            decoder = Decoder(self.alphas,
-                              self.model.betas,
-                              self.args.B)
-            genotype, = decoder.genotype_decode()
-            genotype_filename = os.path.join(dir_name, 'genotype')
-            np.save(genotype_filename, genotype)
+        decoder = Decoder(None,
+                          self.model.betas,
+                          self.args.B)
 
         result_paths, result_paths_space = decoder.viterbi_decode()
 
-        alphas = self.model.alphas.data.cpu().numpy()
         betas = self.model.betas.data.cpu().numpy()
 
         network_path_filename = os.path.join(dir_name,'network_path')
         beta_filename = os.path.join(dir_name, 'betas')
-        alpha_filename = os.path.join(dir_name, 'betas')
 
         np.save(network_path_filename, result_paths)
         np.save(beta_filename, betas)
-        np.save(alpha_filename, alphas)
 
-        with open(os.path.join(dir_name, 'miou.txt'), 'w') as f:
-                f.write(str(miou))
+        if miou != None:
+            with open(os.path.join(dir_name, 'miou.txt'), 'w') as f:
+                    f.write(str(miou))
+        if evaluation:
+            self.writer.add_text('network_path', str(result_paths), epoch+1000)
+            self.writer.add_text('miou', str(miou), epoch+1000)
+        else:
+            self.writer.add_text('network_path', str(result_paths), epoch)
 
 
 def main():
@@ -320,6 +334,8 @@ def main():
     parser.add_argument('--network', type=str, default='supernet', choices=['supernet', 'layer_supernet'])
     parser.add_argument('--F', type=int, default=8)
     parser.add_argument('--B', type=int, default=5)
+    parser.add_argument('--C', type=int, default=2, help='num of classifiers')
+
 
 
     """ Training Setting """
@@ -396,7 +412,7 @@ def main():
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
-        if epoch >= trainer.args.epochs - 2 and not trainer.args.no_val \
+        if epoch >= trainer.args.epochs - 5 and not trainer.args.no_val \
         and epoch % args.eval_interval == (args.eval_interval - 1) or epoch == trainer.args.alpha_epoch+1:
             trainer.validation(epoch)
 

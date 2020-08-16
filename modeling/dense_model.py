@@ -408,9 +408,9 @@ class Model_2 (nn.Module):
 
         x = self.aspp(x)
         x = self.decoder(x, low_level, size)   
-        if self.args.use_map:
-            x = x * (1 - normalized_confidence_map) + y1 * normalized_confidence_map
+
         return y1, x
+        # return x
 
 
     def dynamic_inference(self, x, threshold=1.0, confidence='pool'):
