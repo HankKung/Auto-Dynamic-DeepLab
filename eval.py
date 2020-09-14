@@ -15,7 +15,7 @@ from utils.metrics import Evaluator
 from utils.eval_utils import AverageMeter
 
 from modeling.baseline_model import *
-from modeling.dense_model import *
+from modeling.ADD import *
 from modeling.autodeeplab import *
 from modeling.operations import normalized_shannon_entropy
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
@@ -112,6 +112,11 @@ class Evaluation(object):
         # Using cuda
         if args.cuda:
             self.model = self.model.cuda()
+        if args.confidence == 'edm':
+            self.edm = EDM()
+            self.edm = self.edm.cuda()
+        else:
+            self.edm = False
 
         # Resuming checkpoint
         self.best_pred = 0.0
@@ -138,6 +143,23 @@ class Evaluation(object):
             self.best_pred = checkpoint['best_pred']
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
+        if args.resume_edm is not None:
+            if not os.path.isfile(args.resume_edm):
+                raise RuntimeError("=> no checkpoint found at '{}'".format(args.resume_edm))
+            checkpoint = torch.load(args.resume_edm)
+
+            # if the weights are wrapped in module object we have to clean it
+            if args.clean_module:
+                self.edm.load_state_dict(checkpoint['state_dict'])
+                state_dict = checkpoint['state_dict']
+                new_state_dict = OrderedDict()
+                for k, v in state_dict.items():
+                    name = k[7:]  # remove 'module.' of dataparallel
+                    new_state_dict[name] = v
+                self.edm.load_state_dict(new_state_dict)
+
+            else:
+                self.edm.load_state_dict(checkpoint['state_dict'])
 
 
     def validation(self):
@@ -226,6 +248,7 @@ def main():
 
 
     """ dynamic inference"""
+    parser.add_argument('--dynamic', action='store_true', default=False)
     parser.add_argument('--threshold', type=float, default=None)
     parser.add_argument('--confidence', type=str, default='pool', choices=['edm', 'entropy', 'max'])
 
@@ -277,8 +300,11 @@ def main():
     torch.cuda.manual_seed(args.seed)
     evaluation = Evaluation(args)
     evaluation.mac()
-    evaluation.dynamic_inference(threshold=args.threshold, confidence=args.confidence)
-    #evaluation.validation()
+    if args.dynamic:
+        evaluation.dynamic_inference(threshold=args.threshold, confidence=args.confidence)
+    else:
+        evaluation.validation()
+
     evaluation.writer.close()
 
 if __name__ == "__main__":
