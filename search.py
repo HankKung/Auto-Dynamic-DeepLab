@@ -51,7 +51,7 @@ class Trainer(object):
         """ Define Tensorboard Summary """
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
-        self.use_amp = True if (APEX_AVAILABLE and args.use_amp) else False
+        self.use_amp = True 
         self.opt_level = args.opt_level
 
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last':True, 'drop_last': True}
@@ -74,12 +74,14 @@ class Trainer(object):
         if self.args.network == 'supernet':
                 model = Model_search(self.nclass, 12, self.args, exit_layer=5)
 
-        elif self.args.network == 'layer_supernet':
+        elif self.args.network == 'net_supernet':
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
 
             if self.args.C == 2: 
                 C_index = [5]
+            elif self.args.C == 3:
+                C_index = [3,7]
             elif self.args.C == 4:
                 C_index = [2,5,8]
 
@@ -101,7 +103,7 @@ class Trainer(object):
 
         """ Define Evaluator """
         self.evaluator = []
-        for num in self.args.C:
+        for num in range(self.args.C):
             self.evaluator.append(Evaluator(self.nclass))
 
 
@@ -186,10 +188,10 @@ class Trainer(object):
             outputs = self.model(image)
 
             loss = []
-            for i in range(self.args.C + 1):
-                loss.append(self.self.criterion(outputs[i], target))
+            for classifier_i in range(self.args.C):
+                loss.append(self.criterion(outputs[classifier_i], target))
 
-            loss = sum(loss)
+            loss = sum(loss)/(self.args.C)
 
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -208,10 +210,10 @@ class Trainer(object):
                 outputs_search = self.model(image_search)
 
                 arch_loss = []
-                for i in range(self.args.C + 1):
-                    arch_loss.append(self.self.criterion(outputs_search[i], target_search))
+                for classifier_i in range(self.args.C):
+                    arch_loss.append(self.criterion(outputs_search[classifier_i], target_search))
 
-                arch_loss = sum(arch_loss)
+                arch_loss = sum(arch_loss) / self.args.C
                 
                 if self.use_amp:
                     with amp.scale_loss(arch_loss, self.architect_optimizer) as arch_scaled_loss:
@@ -222,9 +224,7 @@ class Trainer(object):
                 self.architect_optimizer.step()
                 search_loss += arch_loss.item()
                 
-
             train_loss += loss.item()
-            
             tbar.set_description('Train loss: %.3f --Search loss: %.3f' \
                 % (train_loss/(i+1), search_loss/(i+1)))
 
@@ -248,24 +248,24 @@ class Trainer(object):
                 outputs = self.model(image)
 
             loss = []
-            for i in range(self.args.C + 1):
-                loss.append(self.self.criterion(outputs[i], target))
+            for classifier_i in range(self.args.C):
+                loss.append(self.criterion(outputs[classifier_i], target))
 
-            loss = sum(loss)
+            loss = sum(loss)/(self.args.C)
             test_loss += loss.item()
 
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
 
-            for i in range(self.args.C + 1):
-                outputs[i] = torch.argmax(outputs[i], axis=1)
-                self.evaluator[i].add_batch(target, outputs[i])
+            for classifier_i in range(self.args.C):
+                outputs[classifier_i] = torch.argmax(outputs[classifier_i], axis=1)
+                self.evaluator[classifier_i].add_batch(target, outputs[classifier_i])
 
             """ Add batch sample into evaluator"""
 
         mIoU = []
-        for i, e in enumerate(self.evaluator):
+        for classifier_i, e in enumerate(self.evaluator):
             mIoU.append(e.Mean_Intersection_over_Union())
-            self.writer.add_scalar('val/classifier_' + i + '/mIoU', mIoU[i], epoch)
+            self.writer.add_scalar('val/classifier_' + str(classifier_i) + '/mIoU', mIoU[classifier_i], epoch)
 
         """ FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union() """
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
@@ -274,7 +274,7 @@ class Trainer(object):
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.test_batch_size + image.data.shape[0]))
         print('Loss: %.3f' % test_loss)
-        new_pred = sum(mIoU)
+        new_pred = sum(mIoU)/self.args.C
         if new_pred > self.best_pred:
             is_best = True
             self.best_pred = new_pred
@@ -321,8 +321,8 @@ class Trainer(object):
             with open(os.path.join(dir_name, 'miou.txt'), 'w') as f:
                     f.write(str(miou))
         if evaluation:
-            self.writer.add_text('network_path', str(result_paths), epoch+1000)
-            self.writer.add_text('miou', str(miou), epoch+1000)
+            self.writer.add_text('network_path', str(result_paths), epoch)
+            self.writer.add_text('miou', str(miou), epoch)
         else:
             self.writer.add_text('network_path', str(result_paths), epoch)
 
@@ -331,7 +331,7 @@ def main():
     parser = argparse.ArgumentParser(description="The Search")
 
     """ Search Network """
-    parser.add_argument('--network', type=str, default='supernet', choices=['supernet', 'layer_supernet'])
+    parser.add_argument('--network', type=str, default='supernet', choices=['supernet', 'net_supernet'])
     parser.add_argument('--F', type=int, default=8)
     parser.add_argument('--B', type=int, default=5)
     parser.add_argument('--C', type=int, default=2, help='num of classifiers')
@@ -365,7 +365,7 @@ def main():
     parser.add_argument('--weight-decay', type=float, default=5e-4, metavar='M', help='w-decay (default: 5e-4)')
     parser.add_argument('--arch-weight-decay', type=float, default=1e-3, metavar='M', help='w-decay (default: 5e-4)')
     parser.add_argument('--nesterov', action='store_true', default=False, help='whether use nesterov (default: False)')
-    parser.add_argument('--use-amp', action='store_true', default=False) 
+    parser.add_argument('--use-amp', action='store_true', default=True) 
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
 
 
@@ -382,7 +382,7 @@ def main():
 
 
     """ evaluation option """
-    parser.add_argument('--eval-interval', type=int, default=1, help='evaluuation interval (default: 1)')
+    parser.add_argument('--eval-interval', type=int, default=10, help='evaluuation interval (default: 1)')
     parser.add_argument('--no-val', action='store_true', default=False, help='skip validation during training')
 
 
@@ -412,8 +412,7 @@ def main():
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
-        if epoch >= trainer.args.epochs - 5 and not trainer.args.no_val \
-        and epoch % args.eval_interval == (args.eval_interval - 1) or epoch == trainer.args.alpha_epoch+1:
+        if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
 
     trainer.writer.close()

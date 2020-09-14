@@ -413,8 +413,8 @@ class Model_net_search (nn.Module) :
                 if 2 in self.C_index:
                     C_output_4.append(self.aspp_4(level_4[-1]))
                     C_output_8.append(self.aspp_8(level_8[-1]))
-                    C_output_16.append(self.aspp_8(level_16[-1]))
-                    C_output_32.append(self.aspp_8(level_32[-1]))
+                    C_output_16.append(self.aspp_16(level_16[-1]))
+                    C_output_32.append(self.aspp_32(level_32[-1]))
 
             elif layer == 3 :
                 level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
@@ -461,6 +461,12 @@ class Model_net_search (nn.Module) :
                 level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
                 level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
                 level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
+
+                if 3 in self.C_index:
+                    C_output_4.append(self.aspp_4(level_4[-1]))
+                    C_output_8.append(self.aspp_8(level_8[-1]))
+                    C_output_16.append(self.aspp_16(level_16[-1]))
+                    C_output_32.append(self.aspp_32(level_32[-1]))
 
             elif layer not in self.C_index and layer < self._num_layers - 2:
                 level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
@@ -557,56 +563,8 @@ class Model_net_search (nn.Module) :
 
                 C_output_4.append(self.aspp_4(level_4[-1]))
                 C_output_8.append(self.aspp_8(level_8[-1]))
-                C_output_16.append(self.aspp_8(level_16[-1]))
-                C_output_32.append(self.aspp_8(level_32[-1]))
-
-                # exit_1_4_new = self.aspp_4(level_4[-1])
-                # exit_1_8_new = self.aspp_8(level_8[-1])
-                # exit_1_16_new = self.aspp_16(level_16[-1])
-                # exit_1_32_new = self.aspp_32(level_32[-1])
-
-            elif layer < self._num_layers - 2:
-                level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense[:-1], dim=1),
-                                                                None,
-                                                                level_4[-1],
-                                                                level_8[-1])
-                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
-                count += 1
-
-
-                level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (torch.cat(level_8_dense[:-1], dim=1),
-                                                                              level_4[-1],
-                                                                              level_8[-1],
-                                                                              level_16[-1])
-                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
-                count += 1
-
-
-                level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (torch.cat(level_16_dense[:-1], dim=1),
-                                                                                 level_8[-1],
-                                                                                 level_16[-1],
-                                                                                 level_32[-1])
-                level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
-                count += 1
-
-
-                level32_new_1, level32_new_2 = self.cells[count] (torch.cat(level_32_dense[:-1], dim=1),
-                                                                  level_16[-1],
-                                                                  level_32[-1],
-                                                                  None)
-                level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
-                count += 1
-
-
-                level_4.append (level4_new)
-                level_8.append (level8_new)
-                level_16.append (level16_new)
-                level_32.append (level32_new)
-
-                level_4_dense.append(self.dense_preprocess[layer][0](level4_new))
-                level_8_dense.append(self.dense_preprocess[layer][1](level8_new))
-                level_16_dense.append(self.dense_preprocess[layer][2](level16_new))
-                level_32_dense.append(self.dense_preprocess[layer][3](level32_new))
+                C_output_16.append(self.aspp_16(level_16[-1]))
+                C_output_32.append(self.aspp_32(level_32[-1]))
 
             elif layer == self._num_layers-1:
                 level4_new_1, level4_new_2 = self.cells[count] (torch.cat(level_4_dense, dim=1),
@@ -685,7 +643,7 @@ class Model_net_search (nn.Module) :
                 level_32.append (level32_new)
 
 
-            if layer < self.C_index[0]:
+            if layer < 3:
                 level_4 = level_4[-2:]
                 level_8 = level_8[-2:]
                 level_16 = level_16[-2:]
@@ -702,12 +660,6 @@ class Model_net_search (nn.Module) :
         C_output_16.append(self.aspp_16(level_16[-1]))
         C_output_32.append(self.aspp_32(level_32[-1]))
 
-
-        # exit_2_4_new = self.aspp_4 (level_4[-1])
-        # exit_2_8_new = self.aspp_8 (level_8[-1])
-        # exit_2_16_new = self.aspp_16 (level_16[-1])
-        # exit_2_32_new = self.aspp_32 (level_32[-1])
-
         C_sum_maps = []
         upsample = nn.Upsample(size=x.size()[2:], mode='bilinear', align_corners=True)
         for c in range(len(self.C_index) +1):
@@ -716,20 +668,6 @@ class Model_net_search (nn.Module) :
             C_output_16[c] = upsample(C_output_16[c])
             C_output_32[c] = upsample(C_output_32[c])
             C_sum_maps.append(C_output_4[c] + C_output_8[c] + C_output_16[c] + C_output_32[c])
-        # exit_2_4_new = upsample (exit_2_4_new)
-        # exit_2_8_new = upsample (exit_2_8_new)
-        # exit_2_16_new = upsample (exit_2_16_new)
-        # exit_2_32_new = upsample (exit_2_32_new)
-
-        # exit_1_4_new = upsample(exit_1_4_new)
-        # exit_1_8_new = upsample(exit_1_8_new)
-        # exit_1_16_new = upsample(exit_1_16_new)
-        # exit_1_32_new = upsample(exit_1_32_new)
-
-        # exit_1_sum_feature_map = exit_1_4_new + exit_1_8_new + exit_1_16_new + exit_1_32_new
-
-        # exit_2_sum_feature_map = exit_2_4_new + exit_2_8_new + exit_2_16_new + exit_2_32_new
-
 
         return C_sum_maps
 

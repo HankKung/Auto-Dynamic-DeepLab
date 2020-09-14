@@ -18,15 +18,18 @@ from utils.copy_state_dict import copy_state_dict
 from utils.eval_utils import AverageMeter
 
 from modeling.baseline_model import *
-from modeling.dense_model import *
+from modeling.ADD import *
 from modeling.operations import normalized_shannon_entropy
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.sync_batchnorm.replicate import patch_replication_callback
 
 from apex import amp
 from ptflops import get_model_complexity_info
+from torch.nn.parallel import DistributedDataParallel
+import torch.distributed as dist
 
 torch.backends.cudnn.benchmark = True
+
 
 class trainNew(object):
     def __init__(self, args):
@@ -41,6 +44,13 @@ class trainNew(object):
         self.writer = self.summary.create_summary()
         self.use_amp = self.args.use_amp
         self.opt_level = self.args.opt_level
+
+        if self.args.dist:
+            torch.distributed.init_process_group(backend="nccl", init_method='env://')
+            local_rank = self.args.local_rank
+            torch.cuda.set_device(local_rank)
+            device = torch.device("cuda", local_rank)
+            dist.barrier()
 
         """ Define Dataloader """
         kwargs = {'num_workers': args.workers, 'pin_memory': True, 'drop_last': True}
@@ -58,61 +68,58 @@ class trainNew(object):
         else:
             weight = None
         self.criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255).cuda()
+        # self.criterion = DataParallelCriterion(self.criterion, device_ids=self.args.gpu_ids).cuda()
         if args.network == 'searched-dense':
-            """ 40_5e_lr_38_31.91  """
-            # cell_path_1 = os.path.join(args.saved_arch_path, '40_5e_38_lr', 'genotype_1.npy')
-            # cell_path_2 = os.path.join(args.saved_arch_path, '40_5e_38_lr','genotype_2.npy')
-            # cell_arch_1 = np.load(cell_path_1)
-            # cell_arch_2 = np.load(cell_path_2)
-            # network_arch = [1, 2, 3, 2, 3, 2, 2, 1, 2, 1, 1, 2]
-
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
-            # network_arch = [0, 1, 2, 3, 2, 2, 2, 2, 1, 2, 3, 2]
-            # low_level_layer = 0
+            if self.args.C == 2:
+                C_index = [5]
+                #4_15_80e_40a_03-lr_5e-4wd_6e-4alr_1e-3awd 513x513 batch 4
+                network_arch = [1, 2, 2, 2, 3, 2, 2, 1, 1, 1, 1, 2]
+                low_level_layer = 0
+            elif self.args.C == 3:
+                C_index = [3, 7]
+                network_arch = [1, 2, 3, 2, 2, 3, 2, 3, 2, 3, 2, 3]
+                low_level_layer = 0
+            elif self.args.C == 4:
+                C_index = [2, 5, 8]
+                network_arch = [1, 2, 3, 3, 2, 3, 3, 3, 3, 3, 2, 2]
+                low_level_layer = 0
 
-            #4_15_80e_40a_03-lr_5e-4wd_6e-4alr_1e-3awd 513x513 batch 4
-            network_arch = [1, 2, 2, 2, 3, 2, 2, 1, 1, 1, 1, 2]
-            low_level_layer = 0
-
-            model = Model_2(network_arch,
+            model = ADD(network_arch,
+                            C_index,
                             cell_arch,
                             self.nclass,
                             args,
                             low_level_layer)
-
-        elif args.network == 'searched-baseline':
-            cell_path_1 = os.path.join(args.saved_arch_path, 'searched_baseline', 'genotype_1.npy')
-            cell_path_2 = os.path.join(args.saved_arch_path, 'searched_baseline','genotype_2.npy')
-            cell_arch_1 = np.load(cell_path_1)
-            cell_arch_2 = np.load(cell_path_2)
-            network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
-            low_level_layer = 1
-            model = Model_2_baseline(network_arch,
-                                        cell_arch,
-                                        self.nclass,
-                                        args,
-                                        low_level_layer)
 
         elif args.network.startswith('autodeeplab'):
             network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
             low_level_layer = 2
+            if self.args.C == 2:
+                C_index = [5]
+            elif self.args.C == 3:
+                C_index = [3, 7]
+            elif self.args.C == 4:
+                C_index = [2, 5, 8]
 
             if args.network == 'autodeeplab-dense':
-                model = Model_2(network_arch,
-                                        cell_arch,
-                                        self.nclass,
-                                        args,
-                                        low_level_layer)
+                model = ADD(network_arch,
+                            C_index,
+                            cell_arch,
+                            self.nclass,
+                            args,
+                            low_level_layer)
 
             elif args.network == 'autodeeplab-baseline':
-                model = Model_2_baseline(network_arch,
-                                        cell_arch,
-                                        self.nclass,
-                                        args,
-                                        low_level_layer)
+                model = Baselin_Model(network_arch,
+                                    C_index,
+                                    cell_arch,
+                                    self.nclass,
+                                    args,
+                                    low_level_layer)
 
 
         """ Define Optimizer """
@@ -123,8 +130,9 @@ class trainNew(object):
         self.model, self.optimizer = model, optimizer
 
         """ Define Evaluator """
-        self.evaluator_1 = Evaluator(self.nclass)
-        self.evaluator_2 = Evaluator(self.nclass)
+        self.evaluator = []
+        for num in range(self.args.C):
+            self.evaluator.append(Evaluator(self.nclass))
 
         """ Define lr scheduler """
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
@@ -160,8 +168,14 @@ class trainNew(object):
         if args.cuda and len(self.args.gpu_ids) >1:
             if self.opt_level == 'O2' or self.opt_level == 'O3':
                 print('currently cannot run with nn.DataParallel and optimization level', self.opt_level)
-            self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
-            patch_replication_callback(self.model)
+            
+            if self.args.dist:
+                self.model = DistributedDataParallel(self.model, 
+                                                    device_ids=[self.args.local_rank],
+                                                    output_device=self.args.local_rank).cuda()
+            else:
+                self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
+            # patch_replication_callback(self.model)
             print('training on multiple-GPUs')
 
 
@@ -203,19 +217,21 @@ class trainNew(object):
         train_loss = 0.0
         self.model.train()
         tbar = tqdm(self.train_loader)
-        num_img_tr = len(self.train_loader)
-        base_iter = epoch * num_img_tr 
-        total_iter = float(num_img_tr * self.args.epochs)
         for i, sample in enumerate(tbar):
-            iter_rate = pow((1.0 * (base_iter + i) / total_iter), 0.9)
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
     
-            output_1, output_2 = self.model(image, iter_rate)
-            loss = self.criterion(output_1, target) + self.criterion(output_2, target)
+            outputs = self.model(image)
+            # loss = self.model(image, True, target)
+            loss = []
+            for classifier_i in range(self.args.C):
+                loss.append(self.criterion(outputs[classifier_i], target))
+            # loss = self.model.calculate_loss(image, target)
+            loss = sum(loss)/(self.args.C)
+
             if self.use_amp:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
@@ -233,10 +249,13 @@ class trainNew(object):
 
     def validation(self, epoch):
         self.model.eval()
-        self.evaluator_1.reset()
-        self.evaluator_2.reset()
-        confidence_meter_1 = AverageMeter()
-        confidence_meter_2 = AverageMeter()
+        for e in self.evaluator:
+            e.reset()
+
+        confidence_meter = []
+        for _ in range(self.args.C):
+            confidence_meter.append(AverageMeter())
+
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
         for i, sample in enumerate(tbar):
@@ -245,48 +264,53 @@ class trainNew(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output_1, output_2 = self.model(image)
-            loss_1 = self.criterion(output_1, target)
-            loss_2 = self.criterion(output_2, target)
-            loss = loss_1 + loss_2
+                outputs = self.model(image)
+            loss = []
+            for classifier_i in range(self.args.C):
+                loss.append(self.criterion(outputs[classifier_i], target))
+
+            loss = sum(loss)/(self.args.C)
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
 
             target_show = target
-            pred_1 = torch.argmax(output_1, axis=1)
-            pred_2 = torch.argmax(output_2, axis=1)
 
-            _, confidence_1 = normalized_shannon_entropy(output_1, get_value=True)
-            _, confidence_2 = normalized_shannon_entropy(output_2, get_value=True)
-            confidence_meter_1.update(confidence_1)
-            confidence_meter_2.update(confidence_2)
-
+            prediction = []
             """ Add batch sample into evaluator """
-            self.evaluator_1.add_batch(target, pred_1)
-            self.evaluator_2.add_batch(target, pred_2)
+            for classifier_i in range(self.args.C):
+                pred = torch.argmax(outputs[classifier_i], axis=1)
+                prediction.append(pred)
+                self.evaluator[classifier_i].add_batch(target, prediction[classifier_i])
+                confidence = normalized_shannon_entropy(outputs[classifier_i])
+                confidence_meter[classifier_i].update(confidence)
+
             if epoch//100 == i:
                 global_step = epoch
-                self.summary.visualize_image(self.writer, self.args.dataset, image, target_show, output_2, global_step)
+                self.summary.visualize_image(self.writer, self.args.dataset, image, target_show, outputs[-1], global_step)
 
-        mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
-        mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
+        mIoU = []
+        mean_confidence = []
+        for classifier_i, e in enumerate(self.evaluator):
+            mIoU.append(e.Mean_Intersection_over_Union())
+            self.writer.add_scalar('val/classifier_' + str(classifier_i) + '/mIoU', mIoU[classifier_i], epoch)
+            mean_confidence.append(confidence_meter[classifier_i].average())
+            self.writer.add_scalar('val/classifier_' + str(classifier_i) + '/confidence', mean_confidence[classifier_i], epoch)
 
-        mean_confidence_1 = confidence_meter_1.average()
-        mean_confidence_2 = confidence_meter_2.average()
-
-        self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
-        self.writer.add_scalar('val/classifier_1/mIoU', mIoU_1, epoch)
-        self.writer.add_scalar('val/classifier_2/mIoU', mIoU_2, epoch)
-        self.writer.add_scalar('val/classifier_1/confidence', mean_confidence_1, epoch)
-        self.writer.add_scalar('val/classifier_2/confidence', mean_confidence_2, epoch)
 
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.test_batch_size + image.data.shape[0]))
-        print("classifier_1_mIoU:{}, classifier_2_mIoU: {}".format(mIoU_1, mIoU_2))
-        print("classifier_1_confidence:{}, classifier_2_confidence: {}".format(mean_confidence_1, mean_confidence_2))
+        if self.args.C == 2:
+            print("classifier_1_mIoU:{}, classifier_2_mIoU: {}".format(mIoU[0], mIoU[1]))
+            print("classifier_1_confidence:{}, classifier_2_confidence: {}".format(mean_confidence[0], mean_confidence[1]))
+        elif self.args.C == 3:
+            print("classifier_1_mIoU:{}, classifier_2_mIoU:{}, classifier_3_mIoU:{}".format(mIoU[0], mIoU[1], mIoU[2]))
+            print("classifier_1_confidence:{}, classifier_2_confidence:{}, classifier_3_confidence:{}".format(mean_confidence[0], mean_confidence[1], mean_confidence[2]))
+        elif self.args.C ==4:
+            print("classifier_1_mIoU:{}, classifier_2_mIoU:{}, classifier_3_mIoU:{}, classifier_4_mIoU:{}".format(mIoU[0], mIoU[1], mIoU[2], mIoU[3]))
+            print("classifier_1_confidence:{}, classifier_2_confidence:{}, classifier_3_confidence:{}, classifier_4_confidence:{}".format(mean_confidence[0], mean_confidence[1], mean_confidence[2], mean_confidence[3]))
         print('Loss: %.3f' % test_loss)
 
-        new_pred = (mIoU_1 + mIoU_2)/2
+        new_pred = sum(mIoU)/self.args.C
         if new_pred > self.best_pred:
             is_best = True
             self.best_pred = new_pred
@@ -311,31 +335,30 @@ def main():
 
     """ model setting """
     parser.add_argument('--network', type=str, default='searched-dense', \
-        choices=['searched-dense', 'searched-baseline', \
-        'autodeeplab-baseline', 'autodeeplab-dense', 'autodeeplab'])
-    parser.add_argument('--num_model_1_layers', type=int, default=6)
+        choices=['searched-dense', 'autodeeplab-baseline', 'autodeeplab-dense', 'autodeeplab'])
     parser.add_argument('--F', type=int, default=20)
     parser.add_argument('--B', type=int, default=5)
-    parser.add_argument('--use-map', type=bool, default=False)
+    parser.add_argument('--C', type=int, default=3, help='num of classifiers')
 
 
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes', choices=['pascal', 'coco', 'cityscapes'], help='dataset name (default: pascal)')
     parser.add_argument('--workers', type=int, default=4, metavar='N', help='dataloader threads')
-
+    parser.add_argument('--dist', action='store_true', default=False)
+    parser.add_argument("--local_rank", type=int)
     """ training config """
-    parser.add_argument('--use-amp', type=bool, default=False)
+    parser.add_argument('--use-amp', type=bool, default=True)
     parser.add_argument('--opt-level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='opt level for half percision training (default: O0)')
     parser.add_argument('--sync-bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
-    parser.add_argument('--epochs', type=int, default=2700, metavar='N')
+    parser.add_argument('--epochs', type=int, default=2400, metavar='N')
     parser.add_argument('--start_epoch', type=int, default=0)
-    parser.add_argument('--batch-size', type=int, default=None, metavar='N')
-    parser.add_argument('--test-batch-size', type=int, default=None, metavar='N')
+    parser.add_argument('--batch-size', type=int, default=4, metavar='N')
+    parser.add_argument('--test-batch-size', type=int, default=1, metavar='N')
     parser.add_argument('--use-balanced-weights', action='store_true', default=False)
 
 
     """ optimizer params """
-    parser.add_argument('--lr', type=float, default=None, metavar='LR')
+    parser.add_argument('--lr', type=float, default=0.05, metavar='LR')
     parser.add_argument('--min_lr', type=float, default=0)
     parser.add_argument('--lr-scheduler', type=str, default='poly', choices=['poly', 'step', 'cos'])
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M')
@@ -346,14 +369,14 @@ def main():
 
     """ cuda, seed and logging """
     parser.add_argument('--no-cuda', action='store_true', default=False)
-    parser.add_argument('--gpu-ids', type=str, default='0', help='use which gpu to train, must be a comma-separated list of integers only (default=0)')
+    parser.add_argument('--gpu-ids', type=str, default='0,1', help='use which gpu to train, must be a comma-separated list of integers only (default=0)')
     parser.add_argument('--seed', type=int, default=1, metavar='S')
 
 
     """ checking point """
     parser.add_argument('--resume', type=str, default=None, help='put the path to resuming file if needed')
     parser.add_argument('--saved-arch-path', type=str, default='searched_arch/')
-    parser.add_argument('--checkname', type=str, default=None)
+    parser.add_argument('--checkname', type=str, default='c3_autodeeplab-dense')
 
 
     """ finetuning pre-trained models """
@@ -385,16 +408,17 @@ def main():
     print(args)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
+
     new_trainer = trainNew(args)
-    new_trainer.mac()
+    # new_trainer.mac()
     print('Starting Epoch:', new_trainer.args.start_epoch)
     print('Total Epoches:', new_trainer.args.epochs)
     
     for epoch in range(new_trainer.args.start_epoch, new_trainer.args.epochs):
         torch.cuda.empty_cache()
         new_trainer.training(epoch)
-        if epoch < 5 or epoch % args.eval_interval == (args.eval_interval - 1) \
-         or epoch > new_trainer.args.epochs - 100:
+        if epoch % args.eval_interval == (args.eval_interval - 1) \
+         or epoch > new_trainer.args.epochs - 5:
             new_trainer.validation(epoch)
     new_trainer.writer.close()
 

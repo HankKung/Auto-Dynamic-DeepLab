@@ -115,430 +115,6 @@ class Cell(nn.Module):
         else:
             return concat_feature
 
-class Model_1 (nn.Module):
-    def __init__(self,
-                network_arch,
-                cell_arch,
-                num_classes,
-                num_layers,
-                BatchNorm,
-                F=20,
-                B=5,
-                low_level_layer=0):
-
-        super(Model_1, self).__init__()
-        
-        self.cells = nn.ModuleList()
-        self.model_1_network = network_arch
-        self.cell_arch = torch.from_numpy(cell_arch)
-        self.num_model_1_layers = num_layers
-        self.low_level_layer = low_level_layer
-        self._num_classes = num_classes
-
-        FB = F * B
-        fm = {0: 1, 1: 2, 2: 4, 3: 8}
-
-        eps = 1e-5
-        momentum = 0.1
-
-        self.stem0 = nn.Sequential(
-            nn.Conv2d(3, 64, 3, stride=2, padding=1, bias=False),
-            BatchNorm(64, eps=eps, momentum=momentum),
-            nn.ReLU(inplace=True)
-        )
-
-        self.stem1 = nn.Sequential(
-            nn.Conv2d(64, 64, 3, padding=1, bias=False),
-            BatchNorm(64, eps=eps, momentum=momentum),
-        )
-
-        self.stem2 = nn.Sequential(
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, 3, stride=2, padding=1, bias=False),
-            BatchNorm(128, eps=eps, momentum=momentum)
-        )
-
-
-        for i in range(self.num_model_1_layers):
-            level = self.model_1_network[i]
-            prev_level = self.model_1_network[i-1]
-            prev_prev_level = self.model_1_network[i-2]
-
-            downup_sample = int(prev_level - level)
-
-            if i == 0:
-                downup_sample = int(0 - level)
-                _cell = Cell(BatchNorm,
-                            B,
-                            64,
-                            128,                               
-                            self.cell_arch,
-                            self.model_1_network[i],
-                            F * fm[level],                        
-                            downup_sample) 
-                
-            elif i == 1:
-                _cell = Cell(BatchNorm,
-                            B,
-                            128,
-                            FB * fm[prev_level],
-                            self.cell_arch,
-                            self.model_1_network[i],
-                            F * fm[level],
-                            downup_sample)
-            elif i == 2:
-                _cell = Cell(BatchNorm,
-                            B, 
-                            FB * fm[prev_prev_level],
-                            FB * fm[prev_level],
-                            self.cell_arch,
-                            self.model_1_network[i],
-                            F * fm[level],
-                            downup_sample)
-            else:
-                dense_channel_list = [F * fm[stride] for stride in self.model_1_network[:i-1]]
-                _cell = Cell(BatchNorm,
-                            B, 
-                            dense_channel_list,
-                            FB * fm[prev_level],
-                            self.cell_arch,
-                            self.model_1_network[i],
-                            F * fm[level],
-                            downup_sample,
-                            dense_in=True)
-       
-            self.cells += [_cell]
-
-        if self.model_1_network[-1] == 1:
-            mult = 2
-        elif self.model_1_network[-1] == 2:
-            mult =1
-
-        self._init_weight()
-        self.pooling = nn.MaxPool2d(3, stride=2)
-        self.gap = nn.AdaptiveAvgPool2d(1)
-        self.relu = nn.ReLU()
-
-
-
-    def forward(self, x):
-        size = (x.shape[2], x.shape[3])
-        stem = self.stem0(x)
-        stem0 = self.stem1(stem)
-        stem1 = self.stem2(stem0)
-        two_last_inputs = [stem0, stem1]
-        dense_feature_map = []
-
-        for i in range(self.num_model_1_layers):       
-            if i < 3:
-                two_last_inputs[0], two_last_inputs[1], feature_map = self.cells[i](
-                    two_last_inputs[0], two_last_inputs[1])
-                dense_feature_map.append(feature_map)
-
-            else:
-                _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                dense_feature_map.append(feature_map)
-
-            if i == self.low_level_layer:
-                low_level_feature = two_last_inputs[1]
-
-            if i == 2:
-                x = two_last_inputs[1]
-        # pool = self.relu(x)
-        # pool = self.pooling(pool)
-        # c, h, w = pool.shape[1] , pool.shape[2], pool.shape[3]
-        # pool = torch.sum(pool)/ (c * h * w)
-        return low_level_feature, dense_feature_map, x
-
-
-    def decision_maker(self, x):
-        pool = self.relu(x)
-        pool = self.pooling(pool)
-        c, h, w = pool.shape[1] , pool.shape[2], pool.shape[3]
-        pool = self.gap(pool)
-        pool = torch.sum(pool)/ c
-        return pool.item()
-
-    def _init_weight(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, SynchronizedBatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-
-class Model_2 (nn.Module):
-    def __init__(self,
-                network_arch,
-                cell_arch, 
-                num_classes, 
-                args, 
-                low_level_layer):
-
-        super(Model_2, self).__init__()
-        BatchNorm = SynchronizedBatchNorm2d if args.sync_bn == True else nn.BatchNorm2d
-        F = args.F
-        B = args.B
-
-        eps = 1e-5
-        momentum = 0.1
-
-        self.args = args
-        num_model_1_layers = args.num_model_1_layers
-        self.num_model_2_layers = len(network_arch) - num_model_1_layers
-
-        self.cells = nn.ModuleList()
-        self.model_2_network = network_arch[num_model_1_layers:]
-        self.cell_arch = torch.from_numpy(cell_arch)
-        self._num_classes = num_classes
-
-        model_1_network = network_arch[:args.num_model_1_layers]
-        self.model_1 = Model_1(model_1_network, cell_arch, num_classes, num_model_1_layers, \
-                                       BatchNorm, F=F, B=B, low_level_layer=low_level_layer)
-        self.decoder = Decoder(num_classes, BatchNorm)
-          
-        fm = {0: 1, 1: 2, 2: 4, 3: 8}
-        for i in range(self.num_model_2_layers):
-
-            level = self.model_2_network[i]
-            prev_level = self.model_2_network[i-1]
-
-            downup_sample = int(prev_level - level)
-            dense_channel_list_1 = [F * fm[stride] for stride in model_1_network]
-
-            if i == 0:
-                downup_sample = int(model_1_network[-1] - self.model_2_network[0])
-                dense_channel_list_2 = dense_channel_list_1[:-1]
-                _cell = Cell(BatchNorm,
-                            B, 
-                            dense_channel_list_2,
-                            F * B * fm[model_1_network[-1]],
-                            self.cell_arch,
-                            self.model_2_network[i],
-                            F * fm[level],
-                            downup_sample,
-                            dense_in=True)
-            
-            elif i == 1:
-                dense_channel_list_2 = dense_channel_list_1
-                _cell = Cell(BatchNorm, B,
-                            dense_channel_list_2,
-                            F * B * fm[self.model_2_network[0]],
-                            self.cell_arch,
-                            self.model_2_network[i],
-                            F * fm[level],
-                            downup_sample,
-                            dense_in=True)
-
-            elif i < self.num_model_2_layers - 2:
-                dense_channel_list_2 = dense_channel_list_1 + \
-                                        [F * fm[stride] for stride in self.model_2_network[:i-1]]
-                _cell = Cell(BatchNorm,
-                            B, 
-                            dense_channel_list_2,
-                            F * B * fm[prev_level],
-                            self.cell_arch,
-                            self.model_2_network[i],
-                            F * fm[level],
-                            downup_sample,
-                            dense_in=True)
-
-            else:
-                dense_channel_list_2 = dense_channel_list_1 + \
-                                        [F * fm[stride] for stride in self.model_2_network[:i-1]]
-                _cell = Cell(BatchNorm,
-                            B, 
-                            dense_channel_list_2,
-                            F * B * fm[prev_level],
-                            self.cell_arch,
-                            self.model_2_network[i],
-                            F * fm[level],
-                            downup_sample,
-                            dense_in=True,
-                            dense_out=False)
-
-            self.cells += [_cell]
-
-        if self.model_2_network[-1] == 1:
-            mult = 2
-        elif self.model_2_network[-1] == 2:
-            mult = 1
-        elif self.model_2_network[-1] == 3:
-            mult = 0.5
-
-        self.low_level_conv = nn.Sequential(
-                                    nn.ReLU(),
-                                    nn.Conv2d(F * B * 2**model_1_network[low_level_layer], 48, 1, bias=False),
-                                    BatchNorm(48, eps=eps, momentum=momentum),
-                                    )
-        self.aspp = ASPP_train(F * B * fm[self.model_2_network[-1]], 
-                                256,
-                                BatchNorm,
-                                mult=mult,
-                                )
-        self._init_weight()
-
-
-    def forward(self, x, iter_rate=1.0):
-        size = (x.shape[2], x.shape[3])
-        low_level, dense_feature_map, x = self.model_1(x)
-        low_level = self.low_level_conv(low_level)
-
-        y1 = self.aspp(x)
-        y1 = self.decoder(y1, low_level, size)
-
-        # if self.args.use_map:
-        # confidence_map = normalized_shannon_entropy(y1, get_value=False)
-        # min_v = torch.min(confidence_map)
-        # range_v = torch.max(confidence_map) - min_v
-        # normalized_confidence_map = (confidence_map - min_v) / range_v
-        # return y1
-        for i in range(self.num_model_2_layers):
-            if i < self.num_model_2_layers - 2:
-                _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                dense_feature_map.append(feature_map)
-            elif i == self.num_model_2_layers -1:
-                x = self.cells[i](dense_feature_map, x)
-            else:
-                x = self.cells[i](dense_feature_map[:-1], x)
-
-        x = self.aspp(x)
-        x = self.decoder(x, low_level, size)   
-
-        return y1, x
-        # return x
-
-
-    def dynamic_inference(self, x, threshold=1.0, confidence='pool'):
-        if confidence == 'pool':
-            torch.cuda.synchronize()
-            tic = time.perf_counter()
-
-            size = (x.shape[2], x.shape[3])
-            low_level, dense_feature_map, x = self.model_1(x)
-            low_level = self.low_level_conv(low_level)
-
-            confidence_value = self.model_1.decision_maker(x)
-
-            if confidence_value > threshold:
-                y1 = self.aspp(x)
-                y1 = self.decoder(y1, low_level, size)
-
-                torch.cuda.synchronize()
-                tic_1 = time.perf_counter()
-                return y1, 1, tic_1 - tic, confidence_value
-
-            for i in range(self.num_model_2_layers):
-                if i < self.num_model_2_layers - 2:
-                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                    dense_feature_map.append(feature_map)
-                elif i == self.num_model_2_layers -1:
-                    x = self.cells[i](dense_feature_map, x)
-                else:
-                    x = self.cells[i](dense_feature_map[:-1], x)
-
-
-            x = self.aspp(x)
-            x = self.decoder(x, low_level, size)  
-
-            torch.cuda.synchronize()
-            tic_2 = time.perf_counter()   
-
-            return x, 0, tic_2 - tic, confidence_value
-        else:
-            torch.cuda.synchronize()
-            tic = time.perf_counter()
-
-            size = (x.shape[2], x.shape[3])
-
-            low_level, dense_feature_map, x = self.model_1(x)
-            low_level = self.low_level_conv(low_level)
-
-            y1 = self.aspp(x)
-            y1 = self.decoder(y1, low_level, size)
-            confidence_value = .0
-            if confidence == 'entropy':
-                confidence_value = normalized_shannon_entropy(y1)
-                if confidence_value < threshold:
-                    torch.cuda.synchronize()
-                    tic_1 = time.perf_counter()
-                    return y1, 1, tic_1 - tic, confidence_value
-
-            elif confidence == 'max':
-                confidence_value = confidence_max(y1, threshold)
-                if confidence_value > threshold:
-                    torch.cuda.synchronize()
-                    tic_1 = time.perf_counter()
-                    return y1, 1, tic_1 - tic, confidence_value
-
-            for i in range(self.num_model_2_layers):
-                if i < self.num_model_2_layers - 2:
-                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                    dense_feature_map.append(feature_map)
-                elif i == self.num_model_2_layers -1:
-                    x = self.cells[i](dense_feature_map, x)
-                else:
-                    x = self.cells[i](dense_feature_map[:-1], x)
-
-
-            x = self.aspp(x)
-            x = self.decoder(x, low_level, size)  
-
-            torch.cuda.synchronize()
-            tic_2 = time.perf_counter()   
-            return x, 0, tic_2 - tic, confidence_value
-
-    def time_measure(self, x):
-        size = (x.shape[2], x.shape[3])
-        torch.cuda.synchronize()
-        tic = time.perf_counter()
-
-        low_level, dense_feature_map, x = self.model_1(x)
-        low_level = self.low_level_conv(low_level)
-        y1 = self.aspp(x)
-        y1 = self.decoder(y1, low_level, size)     
-
-        if self.args.use_map:
-            confidence_map, confidence = normalized_shannon_entropy(y1, get_value=False)
-
-        torch.cuda.synchronize()
-        tic_1 = time.perf_counter()
-
-        for i in range(self.num_model_2_layers):
-            if i < self.num_model_2_layers - 2:
-                _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                dense_feature_map.append(feature_map)
-            elif i == self.num_model_2_layers -1:
-                x = self.cells[i](dense_feature_map, x)
-            else:
-                x = self.cells[i](dense_feature_map[:-1], x)
-
-        x = self.aspp(x)
-        x = self.decoder(x, low_level, size)     
-
-        torch.cuda.synchronize()
-        tic_2 = time.perf_counter()
-
-        return y1, x, tic_1 - tic, tic_2 - tic
-
-
-    def _init_weight(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, SynchronizedBatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-
-
 class ADD (nn.Module):
     def __init__(self,
                 network_arch,
@@ -562,7 +138,7 @@ class ADD (nn.Module):
         # self.model_2_network = network_arch[num_model_1_layers:]
         self.cell_arch = torch.from_numpy(cell_arch)
         self._num_classes = num_classes
-
+        self.low_level_layer = low_level_layer
         # model_1_network = network_arch[:args.num_model_1_layers]
         self.decoder = Decoder(num_classes, BatchNorm)
           
@@ -637,7 +213,7 @@ class ADD (nn.Module):
                             dense_in=False,
                             dense_out=True)
 
-            elif i < self.num_model_2_layers - 2:
+            elif i < self.num_net - 2:
                 dense_channel_list = [F * fm[stride] for stride in self.network_arch[:i-1]]
                 _cell = Cell(BatchNorm,
                             B, 
@@ -688,150 +264,228 @@ class ADD (nn.Module):
                                 BatchNorm,
                                 mult=mult,
                                 )
+        self.conv_aspp = nn.ModuleList()
+        for c in self.C_index:
+            if self.network_arch[c] - self.network_arch[-1] == -1:
+                self.conv_aspp.append(FactorizedReduce(FB*2**self.network_arch[c], FB*2**self.network_arch[-1], BatchNorm, eps=eps, momentum=momentum))
+            elif self.network_arch[c] - self.network_arch[-1] == -2:
+                self.conv_aspp.append(DoubleFactorizedReduce(FB*2**self.network_arch[c], FB*2**self.network_arch[-1], BatchNorm, eps=eps, momentum=momentum))
+            elif self.network_arch[c] - self.network_arch[-1] > 0:
+                self.conv_aspp.append(ReLUConvBN(
+                                    FB*2**self.network_arch[c], FB*2**self.network_arch[-1], 1, 1, 0, BatchNorm, eps=eps, momentum=momentum, affine=True))
         self._init_weight()
 
 
-    def forward(self, x, iter_rate=1.0):
+    def forward(self, x):
         size = (x.shape[2], x.shape[3])
-        low_level, dense_feature_map, x = self.model_1(x)
-        low_level = self.low_level_conv(low_level)
+        aspp_size = (int((float(size[0]) - 1.0) * (2**(-1*self.network_arch[-1])) + 1.0), 
+                        int((float(size[1]) - 1.0) * (2**(-1*self.network_arch[-1])) + 1.0))
+        conv_aspp_iter = 0
 
-        y1 = self.aspp(x)
-        y1 = self.decoder(y1, low_level, size)
+        stem = self.stem0(x)
+        stem0 = self.stem1(stem)
+        stem1 = self.stem2(stem0)
+        two_last_inputs = [stem0, stem1]
+        dense_feature_map = []
+        out = []
 
-        # if self.args.use_map:
-        # confidence_map = normalized_shannon_entropy(y1, get_value=False)
-        # min_v = torch.min(confidence_map)
-        # range_v = torch.max(confidence_map) - min_v
-        # normalized_confidence_map = (confidence_map - min_v) / range_v
-        # return y1
-        for i in range(self.num_model_2_layers):
-            if i < self.num_model_2_layers - 2:
+        for i in range(self.num_net):
+
+            if i < 3:
+                two_last_inputs[0], two_last_inputs[1], feature_map = self.cells[i](
+                    two_last_inputs[0], two_last_inputs[1])
+                dense_feature_map.append(feature_map)
+                if i == 2:
+                    x = two_last_inputs[1]
+
+            elif i < self.num_net - 2:
                 _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
                 dense_feature_map.append(feature_map)
-            elif i == self.num_model_2_layers -1:
+            elif i == self.num_net -1:
                 x = self.cells[i](dense_feature_map, x)
             else:
                 x = self.cells[i](dense_feature_map[:-1], x)
 
-        x = self.aspp(x)
-        x = self.decoder(x, low_level, size)   
+            if i == self.low_level_layer:
+                low_level = self.low_level_conv(two_last_inputs[1])
 
-        return y1, x
-        # return x
-
-
-    def dynamic_inference(self, x, threshold=1.0, confidence='pool'):
-        if confidence == 'pool':
-            torch.cuda.synchronize()
-            tic = time.perf_counter()
-
-            size = (x.shape[2], x.shape[3])
-            low_level, dense_feature_map, x = self.model_1(x)
-            low_level = self.low_level_conv(low_level)
-
-            confidence_value = self.model_1.decision_maker(x)
-
-            if confidence_value > threshold:
-                y1 = self.aspp(x)
-                y1 = self.decoder(y1, low_level, size)
-
-                torch.cuda.synchronize()
-                tic_1 = time.perf_counter()
-                return y1, 1, tic_1 - tic, confidence_value
-
-            for i in range(self.num_model_2_layers):
-                if i < self.num_model_2_layers - 2:
-                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                    dense_feature_map.append(feature_map)
-                elif i == self.num_model_2_layers -1:
-                    x = self.cells[i](dense_feature_map, x)
+            if i in self.C_index or i == self.num_net - 1:
+                if i > 2:
+                    y = x
                 else:
-                    x = self.cells[i](dense_feature_map[:-1], x)
+                    y = two_last_inputs[1]
 
+                if y.shape[2] < aspp_size[0] or y.shape[3] < aspp_size[1]:
+                    y = F.interpolate(y, aspp_size, mode='bilinear')
+                if self.network_arch[i] != self.network_arch[-1]:
+                    y = self.conv_aspp[conv_aspp_iter](y)
+                    conv_aspp_iter += 1
 
-            x = self.aspp(x)
-            x = self.decoder(x, low_level, size)  
+                y = self.aspp(y)
+                y = self.decoder(y, low_level, size)
+                out.append(y) 
+        return out
 
-            torch.cuda.synchronize()
-            tic_2 = time.perf_counter()   
-
-            return x, 0, tic_2 - tic, confidence_value
-        else:
-            torch.cuda.synchronize()
-            tic = time.perf_counter()
-
-            size = (x.shape[2], x.shape[3])
-
-            low_level, dense_feature_map, x = self.model_1(x)
-            low_level = self.low_level_conv(low_level)
-
-            y1 = self.aspp(x)
-            y1 = self.decoder(y1, low_level, size)
-            confidence_value = .0
-            if confidence == 'entropy':
-                confidence_value = normalized_shannon_entropy(y1)
-                if confidence_value < threshold:
-                    torch.cuda.synchronize()
-                    tic_1 = time.perf_counter()
-                    return y1, 1, tic_1 - tic, confidence_value
-
-            elif confidence == 'max':
-                confidence_value = confidence_max(y1, threshold)
-                if confidence_value > threshold:
-                    torch.cuda.synchronize()
-                    tic_1 = time.perf_counter()
-                    return y1, 1, tic_1 - tic, confidence_value
-
-            for i in range(self.num_model_2_layers):
-                if i < self.num_model_2_layers - 2:
-                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                    dense_feature_map.append(feature_map)
-                elif i == self.num_model_2_layers -1:
-                    x = self.cells[i](dense_feature_map, x)
-                else:
-                    x = self.cells[i](dense_feature_map[:-1], x)
-
-
-            x = self.aspp(x)
-            x = self.decoder(x, low_level, size)  
-
-            torch.cuda.synchronize()
-            tic_2 = time.perf_counter()   
-            return x, 0, tic_2 - tic, confidence_value
-
-    def time_measure(self, x):
+    def get_feature(self, x):
         size = (x.shape[2], x.shape[3])
+        aspp_size = (int((float(size[0]) - 1.0) * (2**(-1*self.network_arch[-1])) + 1.0), 
+                        int((float(size[1]) - 1.0) * (2**(-1*self.network_arch[-1])) + 1.0))
+        conv_aspp_iter = 0
+
+        stem = self.stem0(x)
+        stem0 = self.stem1(stem)
+        stem1 = self.stem2(stem0)
+        two_last_inputs = [stem0, stem1]
+        dense_feature_map = []
+        feature = []
+        out = []
+
+        for i in range(self.num_net):
+
+            if i < 3:
+                two_last_inputs[0], two_last_inputs[1], feature_map = self.cells[i](
+                    two_last_inputs[0], two_last_inputs[1])
+                dense_feature_map.append(feature_map)
+                if i == 2:
+                    x = two_last_inputs[1]
+
+            elif i < self.num_net - 2:
+                _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
+                dense_feature_map.append(feature_map)
+            elif i == self.num_net -1:
+                x = self.cells[i](dense_feature_map, x)
+            else:
+                x = self.cells[i](dense_feature_map[:-1], x)
+
+            if i == self.low_level_layer:
+                low_level = self.low_level_conv(two_last_inputs[1])
+
+            if i in self.C_index or i == self.num_net - 1:
+                if i > 2:
+                    y = x
+                else:
+                    y = two_last_inputs[1]
+                feature.append(y)
+                if y.shape[2] < aspp_size[0] or y.shape[3] < aspp_size[1]:
+                    y = F.interpolate(y, aspp_size, mode='bilinear')
+                if self.network_arch[i] != self.network_arch[-1]:
+                    y = self.conv_aspp[conv_aspp_iter](y)
+                    conv_aspp_iter += 1
+
+                y = self.aspp(y)
+                y = self.decoder(y, low_level, size)
+                out.append(y) 
+        return out, feature
+
+    def dynamic_inference(self, x, threshold=1.0, confidence='edm', edm=False):
         torch.cuda.synchronize()
         tic = time.perf_counter()
+        size = (x.shape[2], x.shape[3])
 
-        low_level, dense_feature_map, x = self.model_1(x)
-        low_level = self.low_level_conv(low_level)
-        y1 = self.aspp(x)
-        y1 = self.decoder(y1, low_level, size)     
+        earlier_exit = 0
+        conv_aspp_iter = 0
 
-        if self.args.use_map:
-            confidence_map, confidence = normalized_shannon_entropy(y1, get_value=False)
+        stem = self.stem0(x)
+        stem0 = self.stem1(stem)
+        stem1 = self.stem2(stem0)
+        two_last_inputs = [stem0, stem1]
+        dense_feature_map = []
 
-        torch.cuda.synchronize()
-        tic_1 = time.perf_counter()
+        if confidence == 'edm':
+            for i in range(self.num_net):
+                if i < 3:
+                    two_last_inputs[0], two_last_inputs[1], feature_map = self.cells[i](
+                        two_last_inputs[0], two_last_inputs[1])
+                    dense_feature_map.append(feature_map)
+                    if i == 2:
+                        x = two_last_inputs[1]
 
-        for i in range(self.num_model_2_layers):
-            if i < self.num_model_2_layers - 2:
-                _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
-                dense_feature_map.append(feature_map)
-            elif i == self.num_model_2_layers -1:
-                x = self.cells[i](dense_feature_map, x)
-            else:
-                x = self.cells[i](dense_feature_map[:-1], x)
+                elif i < self.num_net - 2:
+                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
+                    dense_feature_map.append(feature_map)
+                elif i == self.num_net -1:
+                    x = self.cells[i](dense_feature_map, x)
+                else:
+                    x = self.cells[i](dense_feature_map[:-1], x)
 
-        x = self.aspp(x)
-        x = self.decoder(x, low_level, size)     
+                if i == self.low_level_layer:
+                    low_level = self.low_level_conv(two_last_inputs[1])
 
-        torch.cuda.synchronize()
-        tic_2 = time.perf_counter()
+                if i in self.C_index or i == self.num_net - 1:
+                    if i > 2:
+                        y = x
+                    else:
+                        y = two_last_inputs[1]
+                    if i != self.num_net -1:
+                        confidence_value = edm(y)
+                        if confidence_value > threshold:
+                            conv_aspp_iter += 1
+                            continue
+                        else:
+                            if y.shape[2] < aspp_size[0] or y.shape[3] < aspp_size[1]:
+                                y = F.interpolate(y, aspp_size, mode='bilinear')
+                            if self.network_arch[i] != self.network_arch[-1]:
+                                y = self.conv_aspp[conv_aspp_iter](y)
+                            y = self.aspp(y)
+                            y = self.decoder(y, low_level, size)
+                            earlier_exit = 1
+                            break
+                    else:
+                        y = self.aspp(y)
+                        y = self.decoder(y, low_level, size)
+            torch.cuda.synchronize()
+            tic_2 = time.perf_counter() 
+            return y, earlier_exit, tic_2 - tic, confidence_value
 
-        return y1, x, tic_1 - tic, tic_2 - tic
+        else:
+            for i in range(self.num_net):
+                if i < 3:
+                    two_last_inputs[0], two_last_inputs[1], feature_map = self.cells[i](
+                        two_last_inputs[0], two_last_inputs[1])
+                    dense_feature_map.append(feature_map)
+                    if i == 2:
+                        x = two_last_inputs[1]
+
+                elif i < self.num_net - 2:
+                    _, x, feature_map = self.cells[i](dense_feature_map[:-1], x)
+                    dense_feature_map.append(feature_map)
+                elif i == self.num_net -1:
+                    x = self.cells[i](dense_feature_map, x)
+                else:
+                    x = self.cells[i](dense_feature_map[:-1], x)
+
+                if i == self.low_level_layer:
+                    low_level = self.low_level_conv(two_last_inputs[1])
+
+                if i in self.C_index or i == self.num_net - 1:
+                    if i > 2:
+                        y = x
+                    else:
+                        y = two_last_inputs[1]
+                    if y.shape[2] < aspp_size[0] or y.shape[3] < aspp_size[1]:
+                        y = F.interpolate(y, aspp_size, mode='bilinear')
+                        if self.network_arch[i] != self.network_arch[-1]:
+                            y = self.conv_aspp[conv_aspp_iter](y)
+                        y = self.aspp(y)
+                        y = self.decoder(y, low_level, size)
+
+                    if i != self.num_net -1:
+                        if confidence == 'entropy':
+                            confidence_value = normalized_shannon_entropy(y)
+                        elif confidence == 'max':
+                            confidence_value = confidence_max(y, threshold)
+
+                        if confidence == 'entropy' and confidence_value < threshold:
+                            earlier_exit = 1
+                            break
+                        elif confidence == 'max' and confidence_value > threshold:
+                            earlier_exit = 1
+                            break
+                        else:
+                            conv_aspp_iter += 1
+            torch.cuda.synchronize()
+            tic_2 = time.perf_counter()   
+            return x, earlier_exit, tic_2 - tic, confidence_value
 
 
     def _init_weight(self):
@@ -844,3 +498,30 @@ class ADD (nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
+
+class EDM (nn.Module):
+    def __init__(self):
+
+        super(EDM, self).__init__()
+        self.gap = nn.AdaptiveAvgPool2d(1)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv = nn.Conv2d(400, 128, 3, stride=2, padding=1, bias=False)
+        self.edm = nn.Sequential(nn.Linear(128, 64),
+                                nn.ReLU(inplace=True),
+                                nn.Linear(64, 32),
+                                nn.ReLU(inplace=True),
+                                nn.Linear(32, 1))
+
+    def forward(self, x):
+        x=x.squeeze(1)
+        batch = x.shape[0]
+        # x = self.pool(x)
+        x = self.relu(x)
+        x = self.conv(x)
+        x = self.relu(x)
+        x = self.gap(x)
+        x = x.view(batch, -1)
+        x = self.edm(x)
+        return x
+
+
