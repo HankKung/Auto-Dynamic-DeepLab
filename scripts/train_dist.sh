@@ -1,0 +1,17 @@
+CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distributed.launch --nproc_per_node=4 ../train.py \
+  --checkname c2_search_dense \
+  --network searched-dense \
+  --C 2 \
+  --F 20 \
+  --dataset cityscapes \
+  --batch-size 4 \
+  --workers 8 \
+  --epoch 2689 \
+  --use-balanced-weights \
+  --dist \
+  --use-amp True \
+  --opt-level O1 \
+  --lr 0.05 \
+  --nesterov \
+  --gpu-ids 0,1,2,3 \
+  --saved-arch-path ../searched_arch                                   

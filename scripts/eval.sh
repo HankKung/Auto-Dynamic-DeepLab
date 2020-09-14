@@ -1,0 +1,14 @@
+CUDA_VISIBLE_DEVICES=0 python ../train.py \
+  --checkname evalution \
+  --network searched-dense \
+  --C 2 \
+  --F 20 \
+  --dataset cityscapes \
+  --workers 1 \
+  --gpu-ids 0 \
+  --dynamic \
+  --confidence edm \
+  --threshold 0.0 \
+  --saved-arch-path ../searched_arch \
+  --resume path_to_searched_dense_checkpoint \
+  --resume-edm path_to_edm_checkpoint 
