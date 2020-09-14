@@ -1,7 +1,8 @@
 # Dynamic-AutoDeepLab
 
 Dynamic-Auto-DeepLab performs three-stage training by firstly searching for the architecture. Second, train the model with the searched network architecture. 
-## Dynamic Neural Architecture Search
+
+## Neural Architecture Search
 
 **We search for the architecture on Cityscapes**
 
@@ -10,7 +11,9 @@ cd scripts
 bash search_cityscapes.sh
 ```
 
-## Train model with searched network architecture:
+## Train model:
+**One can choose network to train by modified .sh file. Note that we the batch size is #GPU/16 since we use torch.distributed**
+
 ```
 bash train_dist.sh
 ```
