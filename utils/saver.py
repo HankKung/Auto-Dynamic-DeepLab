@@ -14,7 +14,10 @@ class Saver(object):
 
         self.experiment_dir = os.path.join(self.directory, 'experiment_{}'.format(str(run_id)))
         if not os.path.exists(self.experiment_dir):
-            os.makedirs(self.experiment_dir)
+            try:
+                os.makedirs(self.experiment_dir)
+            except:
+                print('fold exists')
 
     def save_checkpoint(self, state, is_best, filename='checkpoint.pth.tar'):
         """Saves checkpoint to disk"""
@@ -47,10 +50,10 @@ class Saver(object):
         p = OrderedDict()
         p['network'] = self.args.network
         p['datset'] = self.args.dataset
-        if self.args.use_amp:
-            p['lr'] = self.args.lr
-            p['lr_scheduler'] = self.args.lr_scheduler
-            p['epoch'] = self.args.epochs
+        # if self.args.use_amp:
+        #     p['lr'] = self.args.lr
+        #     p['lr_scheduler'] = self.args.lr_scheduler
+        #     p['epoch'] = self.args.epochs
 
 
         for key, val in p.items():

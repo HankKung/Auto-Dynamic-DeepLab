@@ -23,7 +23,6 @@ from modeling.sync_batchnorm.replicate import patch_replication_callback
 
 from tqdm import tqdm
 from torchviz import make_dot, make_dot_from_trace
-from apex import amp
 from ptflops import get_model_complexity_info
 
 
@@ -41,54 +40,56 @@ class Evaluation(object):
         _, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
         if args.network == 'searched-dense':
-            """ 40_5e_lr_38_31.91  """
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
-            network_arch = [1, 2, 2, 2, 3, 2, 2, 1, 1, 1, 1, 2]
-            low_level_layer = 0
+            if self.args.C == 2:
+                C_index = [5]
+                #4_15_80e_40a_03-lr_5e-4wd_6e-4alr_1e-3awd 513x513 batch 4
+                network_arch = [1, 2, 2, 2, 3, 2, 2, 1, 1, 1, 1, 2]
+                low_level_layer = 0
+            elif self.args.C == 3:
+                C_index = [3, 7]
+                network_arch = [1, 2, 3, 2, 2, 3, 2, 3, 2, 3, 2, 3]
+                low_level_layer = 0
+            elif self.args.C == 4:
+                C_index = [2, 5, 8]
+                network_arch = [1, 2, 3, 3, 2, 3, 3, 3, 3, 3, 2, 2]
+                low_level_layer = 0
 
-            model = Model_2(network_arch,
+            model = ADD(network_arch,
+                            C_index,
                             cell_arch,
                             self.nclass,
                             args,
                             low_level_layer)
-
-        elif args.network == 'searched-baseline':
-            cell_path = os.path.join(args.saved_arch_path, 'searched_baseline', 'genotype.npy')
-            cell_arch = np.load(cell_path)
-            network_arch = [0, 1, 2, 2, 3, 2, 2, 1, 2, 1, 1, 2]
-            low_level_layer = 1
-            model = Model_2_baseline(network_arch,
-                                    cell_arch,
-                                    self.nclass,
-                                    args,
-                                    low_level_layer)
 
         elif args.network.startswith('autodeeplab'):
             network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
             cell_path = os.path.join(args.saved_arch_path, 'autodeeplab', 'genotype.npy')
             cell_arch = np.load(cell_path)
             low_level_layer = 2
+            if self.args.C == 2:
+                C_index = [5]
+            elif self.args.C == 3:
+                C_index = [3, 7]
+            elif self.args.C == 4:
+                C_index = [2, 5, 8]
 
             if args.network == 'autodeeplab-dense':
-                model = Model_2(network_arch,
-                                cell_arch,
-                                self.nclass,
-                                args,
-                                low_level_layer)
+                model = ADD(network_arch,
+                            C_index,
+                            cell_arch,
+                            self.nclass,
+                            args,
+                            low_level_layer)
 
             elif args.network == 'autodeeplab-baseline':
-                model = Model_2_baseline(network_arch,
-                                        cell_arch,
-                                        self.nclass,
-                                        args,
-                                        low_level_layer)
-            elif args.network == 'autodeeplab':
-                model = AutoDeepLab(network_arch,
-                                        cell_arch,
-                                        self.nclass,
-                                        args,
-                                        low_level_layer)
+                model = Baselin_Model(network_arch,
+                                    C_index,
+                                    cell_arch,
+                                    self.nclass,
+                                    args,
+                                    low_level_layer)
 
         if args.use_balanced_weights:
             classes_weights_path = os.path.join(Path.db_root_dir(args.dataset), args.dataset + '_classes_weights.npy')
@@ -104,8 +105,9 @@ class Evaluation(object):
         self.model = model
 
         # Define Evaluator
-        self.evaluator_1 = Evaluator(self.nclass)
-        self.evaluator_2 = Evaluator(self.nclass)
+        self.evaluator = []
+        for num in range(self.args.C):
+            self.evaluator.append(Evaluator(self.nclass))
 
         # Using cuda
         if args.cuda:
@@ -140,8 +142,8 @@ class Evaluation(object):
 
     def validation(self):
         self.model.eval()
-        self.evaluator_1.reset()
-        self.evaluator_2.reset()
+        for e in self.evaluator:
+            e.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
 
@@ -151,86 +153,26 @@ class Evaluation(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output_1, output_2 = self.model(image)
+                outputs = self.model(image)
 
-            loss_1 = self.criterion(output_1, target)
-            loss_2 = self.criterion(output_2, target)
-
-
-            pred_1 = torch.argmax(output_1, axis=1)
-            pred_2 = torch.argmax(output_2, axis=1)
+            prediction = []
+            """ Add batch sample into evaluator """
+            for classifier_i in range(self.args.C):
+                pred = torch.argmax(outputs[classifier_i], axis=1)
+                prediction.append(pred)
+                self.evaluator[classifier_i].add_batch(target, prediction[classifier_i])
 
 
             # Add batch sample into evaluator
-            self.evaluator_1.add_batch(target, pred_1)
-            self.evaluator_2.add_batch(target, pred_2)
+        mIoU = []
+        for classifier_i, e in enumerate(self.evaluator):
+            mIoU.append(e.Mean_Intersection_over_Union())
 
-        mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
-        mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
-
-        print('Validation:')
-        print("mIoU_1:{}, mIoU_2: {}".format(mIoU_1, mIoU_2))
-
-
-    def testing_entropy(self):
-        self.model.eval()
-        self.evaluator_1.reset()
-        self.evaluator_2.reset()
-        tbar = tqdm(self.val_loader, desc='\r')
-        test_loss = 0.0
-        pool_vec = np.zeros(500)
-        entropy_vec = np.zeros(500)
-        loss_vec = np.zeros(500)
-        for i, sample in enumerate(tbar):
-            image, target = sample['image'], sample['label']
-            if self.args.cuda:
-                image, target = image.cuda(), target.cuda()
-
-            with torch.no_grad():
-                output_1, output_2, pool = self.model.dynamic_inference(image, threshold=threshold, confidence=confidence)
-
-            loss_1 = self.criterion(output_1, target)
-            loss_2 = self.criterion(output_2, target)
-
-
-            pred_1 = torch.argmax(output_1, axis=1)
-            pred_2 = torch.argmax(output_2, axis=1)
-
-            entropy = normalized_shannon_entropy(output_1)
-
-            # Add batch sample into evaluator
-            self.evaluator_1.add_batch(target, pred_1)
-            self.evaluator_2.add_batch(target, pred_2)
-
-            self.writer.add_scalar('pool/i', pool.item(), i)
-            self.writer.add_scalar('entropy/i', entropy, i)
-            self.writer.add_scalar('loss/i', loss_1.item(), i)
-
-            pool_vec[i] = pool.item()
-            entropy_vec[i] = entropy
-            loss_vec[i] = loss_1.item()
-
-        pool_vec = torch.from_numpy(pool_vec)
-        entropy_vec = torch.from_numpy(entropy_vec)
-        loss_vec = torch.from_numpy(loss_vec)
-
-        mIoU_1 = self.evaluator_1.Mean_Intersection_over_Union()
-        mIoU_2 = self.evaluator_2.Mean_Intersection_over_Union()
-
-        cos = nn.CosineSimilarity(dim=-1)
-        cos_sim = cos(pool_vec, entropy_vec)
-        print("pool-entropy_cosine similarity: {}".format(cos_sim))
-        cos_sim = cos(pool_vec, loss_vec)
-        print("pool-loss_cosine similarity: {}".format(cos_sim))
-        cos_sim = cos(entropy_vec, loss_vec)
-        print("-entropy-loss_cosine similarity: {}".format(cos_sim))
-
-        print('Validation:')
-        print("mIoU_1:{}, mIoU_2: {}".format(mIoU_1, mIoU_2))
+        print("classifier_1_mIoU:{}, classifier_2_mIoU: {}".format(mIoU[0], mIoU[1]))
 
     def dynamic_inference(self, threshold, confidence):
         self.model.eval()
-        self.evaluator_1.reset()
+        self.evaluator[0].reset()
         time_meter = AverageMeter()
 
         tbar = tqdm(self.val_loader, desc='\r')
@@ -252,9 +194,9 @@ class Evaluation(object):
             pred = torch.argmax(output, axis=1)
 
             # Add batch sample into evaluator
-            self.evaluator_1.add_batch(target, pred)
-
-        mIoU = self.evaluator_1.Mean_Intersection_over_Union()
+            self.evaluator[0].add_batch(target, pred)
+            
+        mIoU = self.evaluator[0].Mean_Intersection_over_Union()
 
         print('Validation:')
         print("mIoU: {}".format(mIoU))
@@ -262,29 +204,6 @@ class Evaluation(object):
         print("fps: {}".format(1.0/time_meter.average()))
         print("num_earlier_exit: {}".format(total_earlier_exit/500*100))
         print("avg_confidence: {}".format(confidence_value_avg/500))
-
-    def time_measure(self):
-        time_meter_1 = AverageMeter()
-        time_meter_2 = AverageMeter()
-        self.model.eval()
-        self.evaluator_1.reset()
-        tbar = tqdm(self.val_loader, desc='\r')
-        test_loss = 0.0
-
-        for i, sample in enumerate(tbar):
-            image, target = sample['image'], sample['label']
-            if self.args.cuda:
-                image, target = image.cuda(), target.cuda()
-
-            with torch.no_grad():
-                _, _, t1, t2 = self.model.time_measure(image)
-            if t1 != None:
-                time_meter_1.update(t1)
-            time_meter_2.update(t2)
-        if t1 != None:
-            print(time_meter_1.average())
-        print(time_meter_2.average())
-
 
 
     def mac(self):
@@ -297,27 +216,26 @@ class Evaluation(object):
 
 def main():
     parser = argparse.ArgumentParser(description="Eval")
+
     """ model setting """
     parser.add_argument('--network', type=str, default='searched-dense', \
-        choices=['searched-dense', 'searched-baseline', 'autodeeplab-baseline', 'autodeeplab-dense', 'autodeeplab', 'supernet'])
-    parser.add_argument('--num_model_1_layers', type=int, default=6)
+        choices=['searched-dense', 'autodeeplab-baseline', 'autodeeplab-dense', 'autodeeplab'])
     parser.add_argument('--F', type=int, default=20)
     parser.add_argument('--B', type=int, default=5)
-    parser.add_argument('--use-map', type=bool, default=False)
+    parser.add_argument('--C', type=int, default=2, help='num of classifiers')
 
 
     """ dynamic inference"""
     parser.add_argument('--threshold', type=float, default=None)
-    parser.add_argument('--confidence', type=str, default='pool', choices=['pool', 'entropy', 'max'])
+    parser.add_argument('--confidence', type=str, default='pool', choices=['edm', 'entropy', 'max'])
+
 
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes')
     parser.add_argument('--workers', type=int, default=1, metavar='N')
 
 
-    """ training config """
-    parser.add_argument('--use-amp', type=bool, default=False)
-    
+    """ training config """    
     parser.add_argument('--sync-bn', type=bool, default=None)
     parser.add_argument('--freeze-bn', type=bool, default=False)
 

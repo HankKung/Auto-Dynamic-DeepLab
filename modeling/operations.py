@@ -179,12 +179,3 @@ def confidence_max(x, thresold, num_class=19):
     num_max = num_max / (size[0] * size[1])
     return num_max
   
-
-def global_pooling(x, mode='avg'):
-    if mode == 'avg':
-        pool = nn.AdaptiveMaxPool2d(1)
-    elif mode == 'max':
-        pool = nn.AdaptiveAvgPool2d(1)
-    x = pool(x)
-    x = torch.mean(x)
-    return x

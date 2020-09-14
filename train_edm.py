@@ -20,7 +20,7 @@ from utils.eval_utils import AverageMeter
 
 from modeling.baseline_model import *
 # from modeling.ADD import *
-from modeling.dense_model import *
+from modeling.ADD import *
 from modeling.operations import normalized_shannon_entropy
 from modeling.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from modeling.sync_batchnorm.replicate import patch_replication_callback
