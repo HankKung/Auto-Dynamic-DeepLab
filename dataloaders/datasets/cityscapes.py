@@ -25,9 +25,10 @@ def twoTrainSeg(args, root=Path.db_root_dir('cityscapes')):
 class CityscapesSegmentation(data.Dataset):
     NUM_CLASSES = 19
 
-    def __init__(self, args, root=Path.db_root_dir('cityscapes'), split="train",indices_for_split=None, search=False):
+    def __init__(self, args, root=Path.db_root_dir('cityscapes'), split="train",indices_for_split=None, search=False, full=False):
 
         self.root = root
+        self.full = full
         self.split = split
         self.args = args
         self.files = {}
@@ -74,9 +75,9 @@ class CityscapesSegmentation(data.Dataset):
 
         sample = {'image': _img, 'label': _target}
 
-        if self.split == 'train':
+        if self.split == 'train' and self.full != True:
             return self.transform_tr(sample)
-        elif self.split == 'val':
+        elif self.split == 'val' or self.full == True:
             return self.transform_val(sample)
         elif self.split == 'test':
             return self.transform_ts(sample)
