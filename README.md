@@ -1,6 +1,6 @@
 # Dynamic-AutoDeepLab
 
-Dynamic-Auto-DeepLab performs three-stage training by firstly searching for the architecture. Second, train the model with the searched network architecture. 
+Dynamic-Auto-DeepLab performs three-stage training by firstly searching for the architecture. Second, train the model with the searched network architecture. Third, train earlier-exit-decision.
 
 **Modifiy path to your Cityscapes in mypath.py**
 
