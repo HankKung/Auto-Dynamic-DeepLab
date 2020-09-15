@@ -2,6 +2,9 @@
 
 Dynamic-Auto-DeepLab performs three-stage training by firstly searching for the architecture. Second, train the model with the searched network architecture. 
 
+**Modified path to your Cityscapes in mypath.py**
+
+
 ## Neural Architecture Search
 
 **We search for the architecture on Cityscapes**
