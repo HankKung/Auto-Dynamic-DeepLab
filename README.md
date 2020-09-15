@@ -14,6 +14,10 @@ cd scripts
 bash search_cityscapes.sh
 ```
 
+**The searched architecture and searching progress can be seen by:**
+```
+tensorboard --logdir path-to-your-exp
+```
 ## Train model:
 **One can choose network to train by modified .sh file. Note that we the batch size is #GPU/16 since we use torch.distributed**
 
