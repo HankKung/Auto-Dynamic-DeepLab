@@ -154,9 +154,9 @@ class trainNew(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                outputs, features = self.model.get_feature(image)
-                train_entropy.append(normalized_shannon_entropy(outputs))
-                train_feature.append(features.cpu())
+                output, feature = self.model.get_feature(image)
+                train_entropy.append(normalized_shannon_entropy(output))
+                train_feature.append(feature.cpu())
 
         train_feature = [t.numpy() for t in train_feature] 
         np_entropy = np.array(train_entropy) 
@@ -199,12 +199,16 @@ def main():
     """ dataset config"""
     parser.add_argument('--dataset', type=str, default='cityscapes', choices=['cityscapes', 'cityscapes_edm'], help='dataset name (default: pascal)')
     parser.add_argument('--workers', type=int, default=4, metavar='N', help='dataloader threads')
+    
+
     """ training config """
     parser.add_argument('--epochs', type=int, default=10, metavar='N')
     parser.add_argument('--start_epoch', type=int, default=0)
     parser.add_argument('--batch-size', type=int, default=1, metavar='N')
     parser.add_argument('--test-batch-size', type=int, default=1, metavar='N')
     parser.add_argument('--train-batch', type=int, default=16, metavar='N')
+    parser.add_argument('--dist', action='store_true', default=False)
+
 
     """ optimizer params """
     parser.add_argument('--lr', type=float, default=0.001, metavar='LR')

@@ -195,6 +195,8 @@ class Evaluation(object):
     def dynamic_inference(self, threshold, confidence):
         self.model.eval()
         self.evaluator[0].reset()
+        if confidence == 'edm':
+            self.edm.eval()
         time_meter = AverageMeter()
 
         tbar = tqdm(self.val_loader, desc='\r')
@@ -207,7 +209,7 @@ class Evaluation(object):
                 image, target = image.cuda(), target.cuda()
 
             with torch.no_grad():
-                output, earlier_exit, tic, confidence_value = self.model.dynamic_inference(image, threshold=threshold, confidence=confidence)
+                output, earlier_exit, tic, confidence_value = self.model.dynamic_inference(image, threshold=threshold, confidence=confidence, edm=self.edm)
             total_earlier_exit += earlier_exit
             confidence_value_avg += confidence_value
             time_meter.update(tic)
@@ -266,7 +268,7 @@ def main():
     parser.add_argument('--test-batch-size', type=int, default=1, metavar='N')
     parser.add_argument('--use-balanced-weights', action='store_true', default=False)
     parser.add_argument('--clean-module', type=int, default=0)
-
+    parser.add_argument('--dist', action='store_true', default=False)
 
     """ cuda, seed and logging """
     parser.add_argument('--no-cuda', action='store_true', default=False)
@@ -276,6 +278,7 @@ def main():
 
     """ checking point """
     parser.add_argument('--resume', type=str, default=None)
+    parser.add_argument('--resume_edm', type=str, default=None)
     parser.add_argument('--saved-arch-path', type=str, default='searched_arch/')
     parser.add_argument('--checkname', type=str, default='testing')
 

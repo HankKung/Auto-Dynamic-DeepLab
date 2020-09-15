@@ -135,11 +135,9 @@ class ADD (nn.Module):
         self.args = args
 
         self.cells = nn.ModuleList()
-        # self.model_2_network = network_arch[num_model_1_layers:]
         self.cell_arch = torch.from_numpy(cell_arch)
         self._num_classes = num_classes
         self.low_level_layer = low_level_layer
-        # model_1_network = network_arch[:args.num_model_1_layers]
         self.decoder = Decoder(num_classes, BatchNorm)
           
         self.network_arch = network_arch
@@ -278,8 +276,8 @@ class ADD (nn.Module):
 
     def forward(self, x):
         size = (x.shape[2], x.shape[3])
-        aspp_size = (int((float(size[0]) - 1.0) * (2**(-1*self.network_arch[-1])) + 1.0), 
-                        int((float(size[1]) - 1.0) * (2**(-1*self.network_arch[-1])) + 1.0))
+        aspp_size = (int((float(size[0]) - 1.0) * (2**(-1*(self.network_arch[-1]+2))) + 1.0), 
+                        int((float(size[1]) - 1.0) * (2**(-1*(self.network_arch[-1]+2))) + 1.0))
         conv_aspp_iter = 0
 
         stem = self.stem0(x)
@@ -360,12 +358,12 @@ class ADD (nn.Module):
             if i == self.low_level_layer:
                 low_level = self.low_level_conv(two_last_inputs[1])
 
-            if i in self.C_index or i == self.num_net - 1:
+            if i in self.C_index:
                 if i > 2:
                     y = x
                 else:
                     y = two_last_inputs[1]
-                feature.append(y)
+                feature = y
                 if y.shape[2] < aspp_size[0] or y.shape[3] < aspp_size[1]:
                     y = F.interpolate(y, aspp_size, mode='bilinear')
                 if self.network_arch[i] != self.network_arch[-1]:
@@ -374,14 +372,16 @@ class ADD (nn.Module):
 
                 y = self.aspp(y)
                 y = self.decoder(y, low_level, size)
-                out.append(y) 
+                out = y
+                break
         return out, feature
 
     def dynamic_inference(self, x, threshold=1.0, confidence='edm', edm=False):
         torch.cuda.synchronize()
         tic = time.perf_counter()
         size = (x.shape[2], x.shape[3])
-
+        aspp_size = (int((float(size[0]) - 1.0) * (2**(-1*self.network_arch[-1])) + 1.0), 
+                        int((float(size[1]) - 1.0) * (2**(-1*self.network_arch[-1])) + 1.0))
         earlier_exit = 0
         conv_aspp_iter = 0
 
