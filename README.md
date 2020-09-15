@@ -33,6 +33,18 @@ bash eval.sh
 
 ## Requirements
 
+* Pytorch version 1.1
+
+* Python 3
+
+* tensorboardX
+
+* pycocotools
+
+* tqdm
+
+* apex
+
 ## Citation
 
 ## Acknowledgement
