@@ -223,8 +223,8 @@ class Baselin_Model (nn.Module):
 
     def forward(self, x):
         size = (x.shape[2], x.shape[3])
-        aspp_size = (int((float(size[0]) - 1.0) * (2**(-1*self.network_arch[-1])) + 1.0), 
-                        int((float(size[1]) - 1.0) * (2**(-1*self.network_arch[-1])) + 1.0))
+        aspp_size = (int((float(size[0]) - 1.0) * (2**(-1*(self.network_arch[-1]+2))) + 1.0), 
+                        int((float(size[1]) - 1.0) * (2**(-1*(self.network_arch[-1]+2))) + 1.0))
         conv_aspp_iter = 0
 
         stem = self.stem0(x)
