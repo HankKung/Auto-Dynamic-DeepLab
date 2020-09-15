@@ -33,7 +33,7 @@ bash eval.sh
 
 ## Requirements
 
-* Pytorch version 1.1
+* Pytorch version 1.0+
 
 * Python 3
 
