@@ -1,4 +1,5 @@
 # Dynamic-AutoDeepLab
+This repository is for the IROS 2021 paper [ADD: A Fine-grained Dynamic Inference Architecture for Semantic Image Segmentation](https://ieeexplore.ieee.org/abstract/document/9636650).
 
 Dynamic-Auto-DeepLab performs three-stage training by firstly searching for the architecture. Second, train the model with the searched network architecture. Third, train earlier-exit-decision.
 
